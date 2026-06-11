@@ -1,0 +1,46 @@
+# Production — ports choisis pour éviter les conflits sur le serveur :
+#   frontend 127.0.0.1:8092  (veyron prod = 8091, preprod = 8090)
+#   backend  127.0.0.1:3004  (3000–3003 déjà pris)
+#   mongo    réseau interne uniquement (comme veyron/elvire)
+#
+# Usage :
+#   cp backend/.env.prod.example backend/.env
+#   # éditer backend/.env (JWT_SECRET, etc.)
+#   docker compose -f docker-compose.prod.yml -p c7beauty-prod up -d --build
+
+name: c7beauty-prod
+
+services:
+  frontend:
+    image: c7beauty-frontend-prod
+    build: ./frontend
+    ports:
+      - "127.0.0.1:8092:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: c7beauty-backend-prod
+    build: ./backend
+    ports:
+      - "127.0.0.1:3004:3000"
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - mongo
+    restart: unless-stopped
+    volumes:
+      - user_uploads:/app/uploads
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  user_uploads:
