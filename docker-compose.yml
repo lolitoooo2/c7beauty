@@ -1,0 +1,38 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - mongo
+    restart: unless-stopped
+    volumes:
+      # Volume unique pour TOUS les uploads, organisé en sous-dossiers :
+      #   kyc/               → documents KBIS + CNI (privé, admin uniquement)
+      #   avatars/clients/   → photos de profil clients
+      #   avatars/pros/      → photos de profil pros (futur)
+      #   shops/             → photos salon pro (futur)
+      #   services/          → photos prestations (futur)
+      #   reviews/           → photos avis (futur)
+      - user_uploads:/app/uploads
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  user_uploads:
