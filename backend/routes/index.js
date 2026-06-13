@@ -12,5 +12,6 @@ router.use('/admin',      require('./admin'))
 router.use('/categories', require('./categories'))
 router.use('/services',   require('./services'))
 router.use('/search',     require('./search'))
+router.use('/collaborator', require('./collaborator'))
 
 module.exports = router

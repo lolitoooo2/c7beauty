@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-export type Role = 'client' | 'pro' | 'admin'
+export type Role = 'client' | 'pro' | 'admin' | 'collaborator'
 
 export interface ClientUser {
   _id: string
@@ -42,7 +42,22 @@ export interface ProUser {
   createdAt: string
 }
 
-export type AuthUser = ClientUser | ProUser
+export interface CollaboratorUser {
+  _id: string
+  role: 'collaborator'
+  proId: string
+  firstName: string
+  lastName: string
+  email: string
+  photo: string | null
+  isOwner: boolean
+  serviceIds: string[]
+  active: boolean
+  accountStatus: 'pending' | 'active' | 'disabled'
+  createdAt: string
+}
+
+export type AuthUser = ClientUser | ProUser | CollaboratorUser
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('c7_token'))
@@ -57,6 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isClient   = computed(() => role.value === 'client')
   const isPro      = computed(() => role.value === 'pro')
   const isAdmin    = computed(() => role.value === 'admin')
+  const isCollaborator = computed(() => role.value === 'collaborator')
   const isPending  = computed(() =>
     isPro.value && (user.value as ProUser)?.kyc?.status === 'pending'
   )
@@ -125,6 +141,30 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
+  async function loginCollaborator (email: string, password: string) {
+    const res  = await fetch('/api/auth/login/collaborator', {
+      method  : 'POST',
+      headers : { 'Content-Type': 'application/json' },
+      body    : JSON.stringify({ email, password })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Identifiants incorrects')
+    setSession(data.token, data.user, 'collaborator')
+    return data
+  }
+
+  async function acceptCollaboratorInvite (token: string, password: string) {
+    const res  = await fetch(`/api/auth/invite/collaborator/${token}`, {
+      method  : 'POST',
+      headers : { 'Content-Type': 'application/json' },
+      body    : JSON.stringify({ password })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Invitation invalide')
+    setSession(data.token, data.user, 'collaborator')
+    return data
+  }
+
   async function fetchMe () {
     if (!token.value) return
     const res  = await fetch('/api/auth/me', {
@@ -137,8 +177,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     token, user, role,
-    isLoggedIn, isClient, isPro, isAdmin, isPending,
+    isLoggedIn, isClient, isPro, isAdmin, isCollaborator, isPending,
     setSession, logout,
-    registerClient, registerPro, login, fetchMe
+    registerClient, registerPro, login, loginCollaborator, acceptCollaboratorInvite, fetchMe
   }
 })

@@ -25,13 +25,20 @@ app.use('/uploads', (req, res) => res.status(403).json({ message: 'Accès refus�
 
 app.get('/api/media/avatars/:type/:filename', verifyToken, (req, res) => {
   const { type, filename } = req.params
-  if (!['clients', 'pros'].includes(type)) return res.status(400).json({ message: 'Type invalide.' })
+  if (!['clients', 'pros', 'collaborators'].includes(type)) return res.status(400).json({ message: 'Type invalide.' })
   const safe = path.basename(filename)
   const file = path.join(__dirname, 'uploads', 'avatars', type, safe)
   res.sendFile(file, err => { if (err) res.status(404).json({ message: 'Image introuvable.' }) })
 })
 
-// Photos salon → publiques (découverte, pas de données sensibles)
+// Avatars collaborateurs → publics (fiche salon)
+app.get('/api/media/avatars/collaborators/:filename', (req, res) => {
+  const safe = path.basename(req.params.filename)
+  const file = path.join(__dirname, 'uploads', 'avatars', 'collaborators', safe)
+  res.sendFile(file, err => { if (err) res.status(404).json({ message: 'Image introuvable.' }) })
+})
+
+// Photos salon → publiques
 app.get('/api/media/shops/:filename', (req, res) => {
   const safe = path.basename(req.params.filename)
   const file = path.join(__dirname, 'uploads', 'shops', safe)

@@ -202,6 +202,66 @@
         </div>
       </section>
 
+      <!-- ── Collaborateurs ── -->
+      <section v-else-if="activeSection === 'team'" class="section-content">
+        <div class="svc-header">
+          <h1 class="page-title" style="margin:0">Mon équipe</h1>
+          <button type="button" class="btn-primary" @click="openColModal(null)">
+            <Plus :size="15" /> Ajouter
+          </button>
+        </div>
+        <p class="page-sub">
+          Gérez vos collaborateurs et assignez-leur des prestations. Envoyez le lien d'invitation pour qu'ils accèdent à leur agenda sur mobile.
+        </p>
+
+        <div v-if="colLoading" class="svc-loading">
+          <Loader2 :size="24" class="spin" /> Chargement…
+        </div>
+
+        <div v-else-if="collaborators.length === 0" class="empty-state">
+          <Users :size="40" />
+          <p>Aucun collaborateur.</p>
+        </div>
+
+        <div v-else class="col-list">
+          <article v-for="c in collaborators" :key="c._id" class="col-card" :class="{ inactive: !c.active }">
+            <div class="col-card__avatar">
+              <img v-if="c.photo" :src="`/api/media/avatars/collaborators/${c.photo}`" :alt="c.firstName" />
+              <span v-else>{{ colInitials(c) }}</span>
+            </div>
+            <div class="col-card__body">
+              <div class="col-card__top">
+                <h3>{{ c.firstName }} {{ c.lastName }}</h3>
+                <span v-if="c.isOwner" class="col-badge col-badge--owner">Vous</span>
+                <span v-else class="col-badge" :class="`col-badge--${c.accountStatus}`">
+                  {{ colStatusLabel(c) }}
+                </span>
+              </div>
+              <p class="col-card__email">{{ c.email }}</p>
+              <p class="col-card__meta">{{ c.serviceIds.length }} prestation(s)</p>
+            </div>
+            <div v-if="!c.isOwner" class="col-card__actions">
+              <button type="button" class="btn-icon-sm" title="Modifier" @click="openColModal(c)"><Pencil :size="14" /></button>
+              <template v-if="c.accountStatus === 'pending'">
+                <button type="button" class="btn-icon-sm" title="Renvoyer invitation" @click="resendInvite(c._id)"><RefreshCw :size="14" /></button>
+              </template>
+              <button type="button" class="btn-icon-sm danger" :title="c.active ? 'Désactiver' : 'Réactiver'" @click="toggleCol(c)">
+                <Power :size="14" />
+              </button>
+              <button type="button" class="btn-icon-sm danger" title="Supprimer" @click="deleteCol(c)">
+                <Trash2 :size="14" />
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <div v-if="lastInviteLink" class="invite-box">
+          <p><strong>Lien d'invitation :</strong></p>
+          <code>{{ lastInviteLink }}</code>
+          <button class="btn-outline" type="button" @click="copyText(lastInviteLink)">Copier le lien</button>
+        </div>
+      </section>
+
       <!-- ── Avis ── -->
       <section v-else-if="activeSection === 'reviews'" class="section-content">
         <h1 class="page-title">Mes avis</h1>
@@ -513,16 +573,61 @@
       </div>
     </div>
   </Teleport>
+
+  <!-- Modale collaborateur -->
+  <Teleport to="body">
+    <div v-if="colModal.open" class="modal-overlay" @click.self="colModal.open = false">
+      <div class="svc-modal large">
+        <div class="svc-modal__header">
+          <h3>{{ colModal.id ? 'Modifier le collaborateur' : 'Nouveau collaborateur' }}</h3>
+          <button type="button" @click="colModal.open = false"><X :size="20" /></button>
+        </div>
+        <div class="svc-modal__body">
+          <div class="pf-row">
+            <div class="pf-field">
+              <label>Prénom <span class="req">*</span></label>
+              <input v-model="colModal.firstName" type="text" class="svc-input" />
+            </div>
+            <div class="pf-field">
+              <label>Nom <span class="req">*</span></label>
+              <input v-model="colModal.lastName" type="text" class="svc-input" />
+            </div>
+          </div>
+          <div class="pf-field">
+            <label>Email <span class="req">*</span></label>
+            <input v-model="colModal.email" type="email" class="svc-input" :disabled="!!colModal.id" />
+          </div>
+          <div class="pf-field">
+            <label>Prestations assignées <span class="req">*</span></label>
+            <div class="col-services-grid">
+              <label v-for="svc in allServicesFlat" :key="svc._id" class="cat-toggle">
+                <input type="checkbox" :value="svc._id" v-model="colModal.serviceIds" />
+                <span class="cat-toggle__chip">{{ svc.name }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <p v-if="colModal.error" class="svc-error">{{ colModal.error }}</p>
+        <div class="svc-modal__footer">
+          <button type="button" class="btn-cancel" @click="colModal.open = false">Annuler</button>
+          <button type="button" class="btn-primary" @click="submitCol" :disabled="colModal.saving">
+            <Loader2 v-if="colModal.saving" :size="14" class="spin" />
+            {{ colModal.id ? 'Enregistrer' : 'Créer & inviter' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import {
   LayoutDashboard, CalendarCheck, Scissors, Star, MessageSquare,
   TrendingUp, User, LogOut, Menu, X, CalendarX, CalendarDays,
   Clock, AlertCircle, CheckCircle, ImagePlus, Loader2, Images, GripVertical,
-  Plus, Pencil, Trash2
+  Plus, Pencil, Trash2, Users, RefreshCw, Power
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -606,12 +711,13 @@ const kycLabel = computed(() => {
 
 // ── Nav ───────────────────────────────────────────
 const navItems = [
-  { id: 'home',     label: 'Accueil',       icon: LayoutDashboard },
-  { id: 'agenda',   label: 'Mon agenda',    icon: CalendarDays    },
-  { id: 'services', label: 'Prestations',   icon: Scissors        },
-  { id: 'medias',   label: 'Mes photos',    icon: Images          },
-  { id: 'reviews',  label: 'Avis',          icon: Star            },
-  { id: 'profile',  label: 'Mon profil',    icon: User            },
+  { id: 'home',     label: 'Accueil',         icon: LayoutDashboard },
+  { id: 'agenda',   label: 'Mon agenda',      icon: CalendarDays    },
+  { id: 'services', label: 'Prestations',     icon: Scissors        },
+  { id: 'team',     label: 'Équipe',          icon: Users           },
+  { id: 'medias',   label: 'Mes photos',      icon: Images          },
+  { id: 'reviews',  label: 'Avis',            icon: Star            },
+  { id: 'profile',  label: 'Mon profil',      icon: User            },
 ]
 
 const quickActions = [
@@ -920,10 +1026,181 @@ function handleLogout () {
   router.push('/')
 }
 
+// ── Collaborateurs ────────────────────────────────────
+interface CollaboratorItem {
+  _id: string
+  firstName: string
+  lastName: string
+  email: string
+  photo: string | null
+  isOwner: boolean
+  active: boolean
+  accountStatus: 'pending' | 'active' | 'disabled'
+  serviceIds: string[]
+}
+
+const collaborators = ref<CollaboratorItem[]>([])
+const colLoading    = ref(false)
+const lastInviteLink = ref('')
+
+const allServicesFlat = computed(() =>
+  svcGroups.value.flatMap(g => g.services.filter(s => s.active))
+)
+
+const colModal = reactive({
+  open: false, saving: false, error: '',
+  id: '' as string,
+  firstName: '', lastName: '', email: '',
+  serviceIds: [] as string[]
+})
+
+function colInitials (c: CollaboratorItem) {
+  return ((c.firstName[0] || '') + (c.lastName[0] || '')).toUpperCase()
+}
+
+function colStatusLabel (c: CollaboratorItem) {
+  if (c.accountStatus === 'active') return 'Actif'
+  if (c.accountStatus === 'pending') return 'Invitation en attente'
+  return 'Désactivé'
+}
+
+async function fetchCollaborators () {
+  colLoading.value = true
+  try {
+    const res  = await fetch('/api/pro/collaborators', {
+      headers: { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    collaborators.value = data.data || []
+  } catch {
+    toast.error('Impossible de charger l\'équipe.')
+  } finally {
+    colLoading.value = false
+  }
+}
+
+function openColModal (c: CollaboratorItem | null) {
+  Object.assign(colModal, {
+    open: true, saving: false, error: '',
+    id: c?._id || '',
+    firstName: c?.firstName || '',
+    lastName: c?.lastName || '',
+    email: c?.email || '',
+    serviceIds: c ? [...c.serviceIds] : []
+  })
+}
+
+async function submitCol () {
+  colModal.error = ''
+  if (!colModal.firstName.trim() || !colModal.lastName.trim() || !colModal.email.trim()) {
+    colModal.error = 'Prénom, nom et email obligatoires.'
+    return
+  }
+  if (!colModal.serviceIds.length) {
+    colModal.error = 'Sélectionnez au moins une prestation.'
+    return
+  }
+
+  colModal.saving = true
+  try {
+    const isEdit = !!colModal.id
+    const url    = isEdit ? `/api/pro/collaborators/${colModal.id}` : '/api/pro/collaborators'
+    const res    = await fetch(url, {
+      method  : isEdit ? 'PUT' : 'POST',
+      headers : { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
+      body    : JSON.stringify({
+        firstName  : colModal.firstName.trim(),
+        lastName   : colModal.lastName.trim(),
+        email      : colModal.email.trim(),
+        serviceIds : colModal.serviceIds
+      })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+
+    if (!isEdit && data.invitePath) {
+      lastInviteLink.value = `${window.location.origin}${data.invitePath}`
+      toast.success('Collaborateur créé — copiez le lien d\'invitation.')
+    } else {
+      toast.success('Collaborateur mis à jour.')
+    }
+
+    colModal.open = false
+    fetchCollaborators()
+  } catch (err: unknown) {
+    colModal.error = err instanceof Error ? err.message : 'Erreur'
+  } finally {
+    colModal.saving = false
+  }
+}
+
+async function toggleCol (c: CollaboratorItem) {
+  try {
+    const res = await fetch(`/api/pro/collaborators/${c._id}/status`, {
+      method  : 'PATCH',
+      headers : { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
+      body    : JSON.stringify({ active: !c.active })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success(data.message)
+    fetchCollaborators()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  }
+}
+
+async function deleteCol (c: CollaboratorItem) {
+  const label = `${c.firstName} ${c.lastName}`.trim()
+  const msg = c.accountStatus === 'active'
+    ? `Supprimer ${label} ? Son accès sera révoqué définitivement.`
+    : `Supprimer ${label} ?`
+  if (!confirm(msg)) return
+
+  try {
+    const res = await fetch(`/api/pro/collaborators/${c._id}`, {
+      method  : 'DELETE',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Collaborateur supprimé.')
+    if (lastInviteLink.value) lastInviteLink.value = ''
+    fetchCollaborators()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur suppression.')
+  }
+}
+
+async function resendInvite (id: string) {
+  try {
+    const res  = await fetch(`/api/pro/collaborators/${id}/resend-invite`, {
+      method  : 'POST',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    lastInviteLink.value = `${window.location.origin}${data.invitePath}`
+    toast.success('Nouveau lien généré.')
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  }
+}
+
+function copyText (text: string) {
+  navigator.clipboard.writeText(text)
+  toast.success('Lien copié !')
+}
+
 onMounted(async () => {
   await fetchCategories()
   await syncPhotos()
   fetchServices()
+  fetchCollaborators()
+})
+
+watch(activeSection, (section) => {
+  if (section === 'team') fetchCollaborators()
 })
 </script>
 
@@ -1443,6 +1720,57 @@ body { margin: 0; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.col-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.col-card {
+  display: flex; align-items: center; gap: 1rem;
+  background: #fff; border: 1px solid #E4E0DC; border-radius: 14px;
+  padding: 1rem; transition: opacity 0.2s;
+}
+.col-card.inactive { opacity: 0.55; }
+
+.col-card__avatar {
+  width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #4F3942, #D1A1C7);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Montserrat", sans-serif; font-weight: 700; color: #fff;
+  overflow: hidden;
+}
+.col-card__avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.col-card__body { flex: 1; min-width: 0; }
+.col-card__top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.col-card__top h3 { margin: 0; font-size: 0.95rem; font-weight: 700; color: #4F3942; }
+.col-card__email { margin: 0.15rem 0 0; font-size: 0.8rem; color: #888; }
+.col-card__meta { margin: 0.2rem 0 0; font-size: 0.75rem; color: #aaa; }
+
+.col-badge {
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; padding: 0.15rem 0.5rem; border-radius: 999px;
+  background: #F3EAF7; color: #7A5570;
+}
+.col-badge--owner { background: #4F3942; color: #fff; }
+.col-badge--active { background: #e8f5e9; color: #2e7d32; }
+.col-badge--pending { background: #fff3e0; color: #e65100; }
+.col-badge--disabled { background: #fdecea; color: #c0565b; }
+
+.col-card__actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+
+.col-services-grid {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+  max-height: 180px; overflow-y: auto; padding: 0.25rem 0;
+}
+
+.invite-box {
+  margin-top: 1.5rem; padding: 1rem; background: #fff;
+  border: 1px dashed #D1A1C7; border-radius: 12px;
+}
+.invite-box p { margin: 0 0 0.5rem; font-size: 0.85rem; color: #4F3942; }
+.invite-box code {
+  display: block; word-break: break-all; font-size: 0.75rem;
+  background: #F8F5F2; padding: 0.5rem; border-radius: 8px; margin-bottom: 0.75rem;
 }
 
 @media (max-width: 768px) {

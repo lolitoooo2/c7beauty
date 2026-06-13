@@ -4,6 +4,7 @@ const Client = require('../models/Client')
 const Pro    = require('../models/Pro')
 const Admin  = require('../models/Admin')
 const { geocodeAddress, hasValidLocation } = require('../utils/geocode')
+const { ensureOwnerCollaborator } = require('../utils/collaboratorHelpers')
 
 // ── Helpers ──────────────────────────────────────────
 function paginate (query, page, limit) {
@@ -73,6 +74,7 @@ exports.createPro = async (req, res) => {
       if (coords) payload.location = { type: 'Point', coordinates: coords }
     }
     const pro = await Pro.create(payload)
+    await ensureOwnerCollaborator(pro)
     res.status(201).json({ message: 'Pro créé.', data: pro })
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ message: 'Email ou SIRET déjà utilisé.' })
@@ -142,6 +144,11 @@ exports.updateKyc = async (req, res) => {
     }
 
     const updated = await Pro.findByIdAndUpdate(req.params.id, { $set: update }, { new: true })
+
+    if (status === 'approved') {
+      await ensureOwnerCollaborator(updated)
+    }
+
     res.json({ message: `Dossier ${status}.`, data: updated })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })

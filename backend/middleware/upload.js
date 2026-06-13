@@ -11,6 +11,7 @@ const FOLDERS = {
   kyc           : path.join(UPLOAD_ROOT, 'kyc'),
   avatarsClients: path.join(UPLOAD_ROOT, 'avatars', 'clients'),
   avatarsPros   : path.join(UPLOAD_ROOT, 'avatars', 'pros'),
+  avatarsCollaborators: path.join(UPLOAD_ROOT, 'avatars', 'collaborators'),
   shops         : path.join(UPLOAD_ROOT, 'shops'),           // photos salon pro (futur)
   services      : path.join(UPLOAD_ROOT, 'services'),        // photos prestation (futur)
   reviews       : path.join(UPLOAD_ROOT, 'reviews'),         // photos avis (futur)
@@ -68,7 +69,11 @@ module.exports = {
     maxSizeMb: 2
   }),
 
-  // Photos du salon pro — image uniquement, 5 Mo max
+  avatarCollaboratorUpload: createUploader(FOLDERS.avatarsCollaborators, {
+    maxSizeMb: 2
+  }),
+
+  // Photos du salon pro
   shopsUpload: createUploader(FOLDERS.shops, {
     maxSizeMb: 5
   }),

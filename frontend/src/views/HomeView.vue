@@ -1,6 +1,12 @@
 <template>
   <!-- ── Navbar ── -->
-  <header class="navbar" :class="{ 'navbar--scrolled': scrolled }">
+  <header
+    class="navbar"
+    :class="{
+      'navbar--scrolled': scrolled,
+      'navbar--menu-open': menuOpen
+    }"
+  >
     <div class="navbar__inner">
       <RouterLink to="/" class="navbar__logo">
         <img src="@/assets/logo.svg" alt="C7'Beauty" />
@@ -16,7 +22,7 @@
           {{ isClient ? 'Mon espace' : 'Espace Client' }}
         </RouterLink>
         <RouterLink :to="proLink" class="btn btn--primary">
-          {{ isPro ? 'Espace Pro' : 'Devenir Pro' }}
+          {{ proLinkLabel }}
         </RouterLink>
       </div>
 
@@ -33,12 +39,12 @@
         {{ isClient ? 'Mon espace' : 'Espace Client' }}
       </RouterLink>
       <RouterLink :to="proLink" class="btn btn--primary" @click="menuOpen = false">
-        {{ isPro ? 'Espace Pro' : 'Devenir Pro' }}
+        {{ proLinkLabel }}
       </RouterLink>
     </div>
   </header>
 
-  <main>
+  <main class="home-main">
     <!-- ── Hero ── -->
     <section class="hero">
       <div class="hero__bg">
@@ -96,7 +102,9 @@
         </div>
 
         <div class="section__cta">
-          <a href="#" class="btn btn--outline btn--lg">DÉCOUVREZ TOUTES LES PRESTATIONS</a>
+          <RouterLink to="/recherche" class="btn btn--outline btn--lg">
+            Découvrir toutes les prestations
+          </RouterLink>
         </div>
       </div>
     </section>
@@ -158,11 +166,19 @@ import type { LieuSuggestion } from '@/composables/useLieuAutocomplete'
 import type { PrestationSelectPayload } from '@/composables/usePrestationAutocomplete'
 
 const authStore = useAuthStore()
-const { isLoggedIn, isClient, isPro } = authStore
 
-// Liens navbar intelligents selon le rôle connecté
-const clientLink = computed(() => isClient ? '/espace-client' : '/login/client')
-const proLink    = computed(() => isPro    ? '/espace-pro'    : '/login/pro')
+const clientLink = computed(() => authStore.isClient ? '/espace-client' : '/login/client')
+const proLink = computed(() => {
+  if (authStore.isCollaborator) return '/espace-collaborateur'
+  if (authStore.isPro) return '/espace-pro'
+  return '/login/pro'
+})
+const proLinkLabel = computed(() => {
+  if (authStore.isCollaborator) return 'Mon agenda'
+  if (authStore.isPro) return 'Espace Pro'
+  return 'Devenir Pro'
+})
+const isClient = computed(() => authStore.isClient)
 const scrolled = ref(false)
 const menuOpen = ref(false)
 const searchLieu = ref('')
@@ -281,43 +297,57 @@ body {
 
 <style scoped>
 /* ════════════════════════════════
+   LAYOUT
+════════════════════════════════ */
+.home-main {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* ════════════════════════════════
    NAVBAR
 ════════════════════════════════ */
 .navbar {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 100;
-  height: var(--navbar-h);
+  min-height: var(--navbar-h);
   transition: background 0.35s ease, box-shadow 0.35s ease;
-}
-
-.navbar--scrolled {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 1px 0 rgba(79, 57, 66, 0.08);
 }
 
 .navbar__inner {
   max-width: 1200px;
   margin: 0 auto;
-  height: 100%;
+  height: var(--navbar-h);
   padding: 0 2rem;
   display: flex;
   align-items: center;
   gap: 2rem;
 }
 
+.navbar--scrolled,
+.navbar--menu-open {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 0 rgba(79, 57, 66, 0.08);
+}
+
+.navbar--menu-open .navbar__logo img,
+.navbar--scrolled .navbar__logo img {
+  filter: none;
+}
+
+.navbar--menu-open .navbar__burger span,
+.navbar--scrolled .navbar__burger span {
+  background: var(--color-prune);
+}
+
 .navbar__logo img {
   height: 36px;
   width: auto;
   display: block;
-  /* blanc sur hero, prune après scroll */
   filter: brightness(0) invert(1);
   transition: filter 0.35s ease;
-}
-
-.navbar--scrolled .navbar__logo img {
-  filter: none;
 }
 
 .navbar__nav {
@@ -369,19 +399,42 @@ body {
   transition: background 0.3s;
 }
 
-.navbar--scrolled .navbar__burger span { background: var(--color-prune); }
-
-/* Mobile nav */
+/* Menu mobile — styles indépendants du header transparent */
 .navbar__mobile {
   display: none;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1.5rem 2rem 2rem;
-  background: white;
+  gap: 0.85rem;
+  padding: 1rem 1.25rem 1.5rem;
+  background: #fff;
   border-top: 1px solid var(--color-gris);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 
 .navbar__mobile.open { display: flex; }
+
+.navbar__mobile .nav-link {
+  color: var(--color-prune);
+  padding: 0.5rem 0;
+}
+
+.navbar__mobile .nav-link:hover {
+  color: var(--color-rose);
+}
+
+.navbar__mobile .btn--ghost {
+  color: var(--color-prune);
+  border-color: var(--color-prune);
+  width: 100%;
+}
+
+.navbar__mobile .btn--ghost:hover {
+  background: var(--color-lavande);
+  color: var(--color-prune);
+}
+
+.navbar__mobile .btn--primary {
+  width: 100%;
+}
 
 /* ════════════════════════════════
    BUTTONS
@@ -658,8 +711,10 @@ body {
 }
 
 .section__cta {
-  text-align: center;
+  display: flex;
+  justify-content: center;
   margin-top: 3rem;
+  width: 100%;
 }
 
 /* ── Prestations grid ── */
@@ -851,10 +906,37 @@ body {
    RESPONSIVE
 ════════════════════════════════ */
 @media (max-width: 768px) {
+  .home-main,
+  .section,
+  .footer {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .navbar__inner {
+    padding: 0 1rem;
+    gap: 1rem;
+  }
+
+  .navbar__mobile {
+    padding: 1.25rem 1rem 1.5rem;
+  }
+
   .navbar__nav,
   .navbar__actions { display: none; }
 
   .navbar__burger { display: flex; }
+
+  .hero {
+    width: 100%;
+    min-height: 100svh;
+    overflow: hidden;
+  }
+
+  .hero__content {
+    padding: calc(var(--navbar-h) + 2rem) 1rem 3rem;
+  }
 
   .hero__title { font-size: clamp(2.5rem, 12vw, 4rem); }
 
@@ -864,6 +946,13 @@ body {
     padding: 1rem 1.25rem;
     gap: 0.75rem;
     align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .search-bar__field {
+    width: 100%;
+    min-width: 0;
   }
 
   .search-bar__sep {
@@ -878,10 +967,100 @@ body {
     border-radius: 999px;
   }
 
-  .pro-card { flex-direction: column; text-align: center; }
+  /* Dropdowns : ne pas dépasser l'écran */
+  .search-bar :deep(.prestation-autocomplete),
+  .search-bar :deep(.lieu-autocomplete) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .search-bar :deep(.prestation-autocomplete__dropdown),
+  .search-bar :deep(.lieu-autocomplete__dropdown) {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .section {
+    padding: 3.5rem 0;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 100%;
+    padding: 0 1rem;
+  }
+
+  .section__title,
+  .section__sub {
+    padding: 0 0.25rem;
+  }
+
+  .prestations-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .prestation-card {
+    padding: 1.25rem 0.75rem;
+  }
+
+  .prestation-card__label {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .section__cta {
+    padding: 0;
+  }
+
+  .section__cta .btn {
+    width: 100%;
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.4;
+    padding: 0.9rem 1rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+  }
+
+  .pro-card {
+    flex-direction: column;
+    text-align: center;
+    padding: 2rem 1.25rem;
+    width: 100%;
+    max-width: 100%;
+  }
+
   .pro-card::before { width: 100%; height: 5px; }
   .pro-card__badge { position: static; }
 
-  .footer__inner { flex-direction: column; gap: 2rem; }
+  .pro-card__body .btn {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .footer {
+    padding: 3rem 0 1.5rem;
+  }
+
+  .footer__inner {
+    flex-direction: column;
+    gap: 2rem;
+    padding: 0 1rem;
+  }
+
+  .footer__links {
+    gap: 0.65rem 1.25rem;
+  }
+
+  .footer__copy {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
 }
 </style>

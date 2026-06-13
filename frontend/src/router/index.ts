@@ -62,12 +62,31 @@ const router = createRouter({
       meta: { guestOnly: true, forRole: 'admin' }
     },
 
+    // ── Auth Collaborateur ────────────────────
+    {
+      path: '/login/collaborateur',
+      name: 'login-collaborator',
+      component: () => import('@/views/LoginCollaboratorView.vue'),
+      meta: { guestOnly: true, forRole: 'collaborator' }
+    },
+    {
+      path: '/invitation/collaborateur/:token',
+      name: 'invite-collaborator',
+      component: () => import('@/views/AcceptInviteCollaboratorView.vue')
+    },
+
     // ── Espaces privés ────────────────────────
     {
       path: '/espace-client',
       name: 'client-dashboard',
       component: () => import('@/views/ClientDashboardView.vue'),
       meta: { requiresAuth: true, role: 'client' }
+    },
+    {
+      path: '/espace-collaborateur',
+      name: 'collaborator-dashboard',
+      component: () => import('@/views/CollaboratorDashboardView.vue'),
+      meta: { requiresAuth: true, role: 'collaborator' }
     },
     {
       path: '/espace-pro',
@@ -112,13 +131,13 @@ router.beforeEach((to) => {
   }
 
   // 2. Page protégée avec rôle spécifique → mauvais rôle
-  if (to.meta.requiresAuth && to.meta.role && auth.role !== to.meta.role) {
-    // Redirige vers le bon espace selon le rôle réel
-    if (auth.isClient) return { name: 'client-dashboard' }
-    if (auth.isPro)    return { name: 'pro-dashboard' }
-    if (auth.isAdmin)  return { name: 'admin-dashboard' }
-    return { name: 'home' }
-  }
+    if (to.meta.requiresAuth && to.meta.role && auth.role !== to.meta.role) {
+      if (auth.isClient) return { name: 'client-dashboard' }
+      if (auth.isPro)    return { name: 'pro-dashboard' }
+      if (auth.isCollaborator) return { name: 'collaborator-dashboard' }
+      if (auth.isAdmin)  return { name: 'admin-dashboard' }
+      return { name: 'home' }
+    }
 
   // 3. Page guestOnly → redirige SEULEMENT si le rôle courant correspond à forRole
   //    Exemple : client connecté sur /login/pro → laissé passer (rôle ≠ forRole)
@@ -127,6 +146,7 @@ router.beforeEach((to) => {
     if (!to.meta.forRole || auth.role === to.meta.forRole) {
       if (auth.isClient) return { name: 'client-dashboard' }
       if (auth.isPro)    return { name: 'pro-dashboard' }
+      if (auth.isCollaborator) return { name: 'collaborator-dashboard' }
       if (auth.isAdmin)  return { name: 'admin-dashboard' }
     }
     // Rôle différent → on laisse accéder la page (connexion avec un autre compte)

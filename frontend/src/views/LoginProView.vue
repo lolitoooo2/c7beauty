@@ -63,6 +63,10 @@
         Vous êtes un client ?
         <RouterLink to="/login/client" class="auth-link">Espace Client →</RouterLink>
       </p>
+      <p class="auth-form__client-link">
+        Vous êtes collaborateur(trice) ?
+        <RouterLink to="/login/collaborateur" class="auth-link">Connexion collaborateur →</RouterLink>
+      </p>
     </div>
   </AuthLayout>
 </template>

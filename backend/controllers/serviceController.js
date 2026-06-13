@@ -1,4 +1,5 @@
 const Service = require('../models/Service')
+const { syncOwnerServices } = require('../utils/collaboratorHelpers')
 
 // ── Pro : lecture de son catalogue ──────────────────────
 // GET /api/pro/services
@@ -43,6 +44,7 @@ exports.create = async (req, res) => {
       order: order ?? 0
     })
 
+    await syncOwnerServices(req.userId)
     res.status(201).json({ message: 'Prestation créée.', data: service })
   } catch (err) {
     console.error('[service create]', err)
@@ -61,6 +63,7 @@ exports.update = async (req, res) => {
     allowed.forEach(f => { if (req.body[f] !== undefined) service[f] = req.body[f] })
 
     await service.save()
+    await syncOwnerServices(req.userId)
     res.json({ message: 'Prestation mise à jour.', data: service })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })
@@ -73,6 +76,7 @@ exports.remove = async (req, res) => {
   try {
     const service = await Service.findOneAndDelete({ _id: req.params.id, proId: req.userId })
     if (!service) return res.status(404).json({ message: 'Prestation introuvable.' })
+    await syncOwnerServices(req.userId)
     res.json({ message: 'Prestation supprimée.' })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })

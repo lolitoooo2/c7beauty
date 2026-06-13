@@ -2,6 +2,7 @@ const jwt    = require('jsonwebtoken')
 const Client = require('../models/Client')
 const Pro    = require('../models/Pro')
 const Admin  = require('../models/Admin')
+const Collaborator = require('../models/Collaborator')
 const { geocodeAddress } = require('../utils/geocode')
 
 const JWT_SECRET  = process.env.JWT_SECRET  || 'c7beauty_dev_secret'
@@ -24,11 +25,13 @@ function generateReferralCode () {
  * Un même email ne peut pas être utilisé sur les deux espaces.
  */
 async function emailAlreadyExists (email) {
-  const [c, p] = await Promise.all([
-    Client.findOne({ email }),
-    Pro.findOne({ email })
+  const lEmail = email.toLowerCase()
+  const [c, p, col] = await Promise.all([
+    Client.findOne({ email: lEmail }),
+    Pro.findOne({ email: lEmail }),
+    Collaborator.findOne({ email: lEmail, isOwner: false })
   ])
-  return !!(c || p)
+  return !!(c || p || col)
 }
 
 // ── POST /api/auth/register/client ─────────────────────────────
@@ -223,6 +226,13 @@ exports.me = async (req, res) => {
     if (req.userRole === 'client')      user = await Client.findById(req.userId)
     else if (req.userRole === 'pro')    user = await Pro.findById(req.userId)
     else if (req.userRole === 'admin')  user = await Admin.findById(req.userId)
+    else if (req.userRole === 'collaborator') {
+      user = await Collaborator.findById(req.userId)
+      if (user) {
+        const pro = await Pro.findById(user.proId).select('salonName city postalCode')
+        return res.json({ user, role: req.userRole, pro })
+      }
+    }
 
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable.' })
 

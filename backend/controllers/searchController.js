@@ -1,6 +1,7 @@
-const Pro      = require('../models/Pro')
-const Service  = require('../models/Service')
-const Category = require('../models/Category')
+const Pro          = require('../models/Pro')
+const Service      = require('../models/Service')
+const Category     = require('../models/Category')
+const Collaborator = require('../models/Collaborator')
 
 function escapeRegex (str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -195,7 +196,16 @@ exports.getSalon = async (req, res) => {
 
     if (!pro) return res.status(404).json({ message: 'Salon introuvable.' })
 
-    res.json({ pro })
+    const collaborators = await Collaborator.find({
+      proId         : pro._id,
+      active        : true,
+      accountStatus : 'active'
+    })
+      .sort({ order: 1, createdAt: 1 })
+      .select('firstName lastName photo isOwner serviceIds')
+      .lean()
+
+    res.json({ pro, collaborators })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })
   }
