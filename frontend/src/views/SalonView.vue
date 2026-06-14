@@ -202,7 +202,11 @@ function formatDuration (min: number): string {
 }
 
 function bookService (svc: Service | null) {
-  toast.info('La prise de RDV arrive bientôt !')
+  if (!svc) {
+    toast.info('Sélectionnez une prestation dans la liste pour voir les disponibilités.')
+    return
+  }
+  router.push({ name: 'salon-booking', params: { id: route.params.id, serviceId: svc._id } })
 }
 
 async function fetchPro () {

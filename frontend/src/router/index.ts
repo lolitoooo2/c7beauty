@@ -112,6 +112,11 @@ const router = createRouter({
       name: 'salon',
       component: () => import('@/views/SalonView.vue')
     },
+    {
+      path: '/salon/:id/reserver/:serviceId',
+      name: 'salon-booking',
+      component: () => import('@/views/BookingView.vue')
+    },
 
     // ── Catch all ────────────────────────────
     {
