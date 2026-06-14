@@ -1,15 +1,18 @@
 const WeeklySchedule    = require('../models/WeeklySchedule')
 const SchedulePeriod    = require('../models/SchedulePeriod')
 const ScheduleException = require('../models/ScheduleException')
+const ServiceConstraint = require('../models/ServiceConstraint')
 const Collaborator      = require('../models/Collaborator')
 const {
   normalizeDays,
   parseDateOnly,
+  formatDateOnly,
   getOrCreateSalonSchedule,
   getWeeklyForEditor,
   saveCollaboratorWeekly,
   resetCollaboratorWeekly,
   computeAvailableSlots,
+  computeBookingWeek,
   buildCalendarEvents
 } = require('../utils/scheduleHelpers')
 
@@ -234,6 +237,140 @@ exports.getCalendar = async (req, res) => {
     res.json({ data: events })
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── GET /api/pro/schedule/constraints ─────────────────
+exports.listConstraints = async (req, res) => {
+  try {
+    const filter = { proId: req.userId }
+    if (req.query.collaboratorId) {
+      await assertCollaborator(req.userId, req.query.collaboratorId)
+      filter.collaboratorId = req.query.collaboratorId
+    }
+    const data = await ServiceConstraint.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('serviceIds', 'name')
+      .lean()
+    res.json({ data })
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── POST /api/pro/schedule/constraints ────────────────
+exports.createConstraint = async (req, res) => {
+  try {
+    const {
+      collaboratorId,
+      startTime,
+      endTime,
+      repeatType = 'weekly',
+      dayOfWeek,
+      startDate,
+      endDate,
+      serviceIds = [],
+      label = '',
+      color = '#D1A1C7'
+    } = req.body
+
+    if (!collaboratorId || !startTime || !endTime) {
+      return res.status(400).json({ message: 'collaboratorId, startTime et endTime requis.' })
+    }
+    if (!serviceIds.length) {
+      return res.status(400).json({ message: 'Sélectionnez au moins une prestation.' })
+    }
+
+    await assertCollaborator(req.userId, collaboratorId)
+
+    const constraint = await ServiceConstraint.create({
+      proId          : req.userId,
+      collaboratorId,
+      startTime,
+      endTime,
+      repeatType,
+      dayOfWeek      : repeatType === 'weekly' ? Number(dayOfWeek) : null,
+      startDate      : startDate ? parseDateOnly(startDate) : null,
+      endDate        : endDate ? parseDateOnly(endDate) : null,
+      serviceIds,
+      label,
+      color
+    })
+
+    res.status(201).json({ message: 'Contrainte enregistrée.', data: constraint })
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── PUT /api/pro/schedule/constraints/:id ─────────────
+exports.updateConstraint = async (req, res) => {
+  try {
+    const constraint = await ServiceConstraint.findOne({ _id: req.params.id, proId: req.userId })
+    if (!constraint) return res.status(404).json({ message: 'Contrainte introuvable.' })
+
+    const fields = ['startTime', 'endTime', 'repeatType', 'dayOfWeek', 'label', 'color', 'serviceIds']
+    for (const f of fields) {
+      if (req.body[f] !== undefined) constraint[f] = req.body[f]
+    }
+    if (req.body.startDate !== undefined) {
+      constraint.startDate = req.body.startDate ? parseDateOnly(req.body.startDate) : null
+    }
+    if (req.body.endDate !== undefined) {
+      constraint.endDate = req.body.endDate ? parseDateOnly(req.body.endDate) : null
+    }
+    if (req.body.collaboratorId) {
+      await assertCollaborator(req.userId, req.body.collaboratorId)
+      constraint.collaboratorId = req.body.collaboratorId
+    }
+
+    await constraint.save()
+    res.json({ message: 'Contrainte mise à jour.', data: constraint })
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── DELETE /api/pro/schedule/constraints/:id ──────────
+exports.removeConstraint = async (req, res) => {
+  try {
+    const constraint = await ServiceConstraint.findOneAndDelete({
+      _id: req.params.id,
+      proId: req.userId
+    })
+    if (!constraint) return res.status(404).json({ message: 'Contrainte introuvable.' })
+    res.json({ message: 'Contrainte supprimée.' })
+  } catch (err) {
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── GET /api/availability/booking ─────────────────────
+exports.getBookingWeek = async (req, res) => {
+  try {
+    const { proId, serviceId, from, days = '7', collaboratorId } = req.query
+
+    if (!proId || !serviceId) {
+      return res.status(400).json({ message: 'proId et serviceId requis.' })
+    }
+
+    const fromStr = from || formatDateOnly(new Date())
+    const result  = await computeBookingWeek({
+      proId,
+      serviceId,
+      fromStr,
+      days           : Math.min(14, Math.max(1, Number(days) || 7)),
+      collaboratorId : collaboratorId || null
+    })
+
+    if (result.error && !result.days?.length) {
+      return res.status(404).json({ message: result.error, ...result })
+    }
+
+    res.json(result)
+  } catch (err) {
+    console.error('[schedule.getBookingWeek]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
   }
 }
 

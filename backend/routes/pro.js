@@ -46,6 +46,10 @@ router.get('/schedule/exceptions',          schedule.listExceptions)
 router.post('/schedule/exceptions',         schedule.createException)
 router.delete('/schedule/exceptions/:id',   schedule.removeException)
 router.get('/schedule/calendar',            schedule.getCalendar)
+router.get('/schedule/constraints',           schedule.listConstraints)
+router.post('/schedule/constraints',          schedule.createConstraint)
+router.put('/schedule/constraints/:id',       schedule.updateConstraint)
+router.delete('/schedule/constraints/:id',    schedule.removeConstraint)
 
 // Photos du salon
 router.post('/photos',             shopsUpload.single('photo'), addShopPhoto)

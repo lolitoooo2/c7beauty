@@ -1,11 +1,20 @@
 const WeeklySchedule    = require('../models/WeeklySchedule')
 const SchedulePeriod    = require('../models/SchedulePeriod')
 const ScheduleException = require('../models/ScheduleException')
+const ServiceConstraint = require('../models/ServiceConstraint')
 const Service           = require('../models/Service')
 const Collaborator      = require('../models/Collaborator')
 
 const BUFFER_MINUTES     = 5
 const MIN_ADVANCE_HOURS  = 2
+const SLOT_STEP_MINUTES  = 15 // pas minimum pour prestations courtes
+
+/** Pas entre créneaux selon la durée (comme Planity : 1h → 9h, 10h, 11h…) */
+function getSlotStepMinutes (serviceDuration) {
+  if (serviceDuration >= 60) return 60
+  if (serviceDuration >= 30) return serviceDuration
+  return SLOT_STEP_MINUTES
+}
 
 const DEFAULT_DAYS = [
   { dayOfWeek: 0, isOpen: true,  slots: [{ start: '09:00', end: '19:00' }] },
@@ -251,6 +260,72 @@ function isServiceBlocked (exceptions, serviceId) {
   )
 }
 
+function isDateInRange (date, startDate, endDate) {
+  const t = date.getTime()
+  if (startDate) {
+    const s = parseDateOnly(formatDateOnly(startDate))
+    if (t < s.getTime()) return false
+  }
+  if (endDate) {
+    const e = parseDateOnly(formatDateOnly(endDate))
+    if (t > e.getTime()) return false
+  }
+  return true
+}
+
+function constraintAppliesOnDate (constraint, date) {
+  const dow = getDayOfWeek(date)
+  if (constraint.repeatType === 'once') {
+    if (!constraint.startDate) return false
+    const start = parseDateOnly(formatDateOnly(constraint.startDate))
+    const end   = constraint.endDate
+      ? parseDateOnly(formatDateOnly(constraint.endDate))
+      : start
+    const t = date.getTime()
+    return t >= start.getTime() && t <= end.getTime()
+  }
+  if (constraint.repeatType === 'weekly') {
+    if (constraint.dayOfWeek !== dow) return false
+    return isDateInRange(date, constraint.startDate, constraint.endDate)
+  }
+  return false
+}
+
+function getConstraintsActiveAtTime (constraints, date, startMin, endMin) {
+  return constraints.filter(c => {
+    if (!constraintAppliesOnDate(c, date)) return false
+    const cStart = parseTimeToMinutes(c.startTime)
+    const cEnd   = parseTimeToMinutes(c.endTime)
+    return rangesOverlap(startMin, endMin, cStart, cEnd)
+  })
+}
+
+function isServiceAllowedByConstraints (activeConstraints, serviceId) {
+  if (!activeConstraints.length) return true
+  const sid = String(serviceId)
+  return activeConstraints.some(c =>
+    (c.serviceIds || []).some(id => String(id) === sid)
+  )
+}
+
+async function getConstraintsForDate (proId, collaboratorId, dateStr) {
+  const date = parseDateOnly(dateStr)
+  if (!date) return []
+  const all = await ServiceConstraint.find({ proId, collaboratorId }).lean()
+  return all.filter(c => constraintAppliesOnDate(c, date))
+}
+
+async function getCollaboratorsForService (proId, serviceId) {
+  return Collaborator.find({
+    proId,
+    active        : true,
+    accountStatus : 'active',
+    serviceIds    : serviceId
+  })
+    .sort({ order: 1, createdAt: 1 })
+    .lean()
+}
+
 /**
  * Créneaux disponibles pour 1 collaborateur + 1 prestation + 1 date.
  */
@@ -288,15 +363,22 @@ async function computeAvailableSlots ({
     return { slots: [], message: 'Fermé ce jour.' }
   }
 
-  const duration = service.duration + BUFFER_MINUTES
+  const serviceDuration = service.duration
+  const slotStep        = getSlotStepMinutes(serviceDuration)
   const minStart = new Date(now.getTime() + MIN_ADVANCE_HOURS * 60 * 60 * 1000)
+  const dayConstraints = await getConstraintsForDate(proId, collaboratorId, dateStr)
   const slots    = []
 
   for (const range of daySchedule.slots) {
     const startMin = parseTimeToMinutes(range.start)
-    const endMin     = parseTimeToMinutes(range.end)
+    const endMin   = parseTimeToMinutes(range.end)
 
-    for (let t = startMin; t + duration <= endMin; t += duration) {
+    // Dernier créneau = dernière heure où la prestation se termine à la fermeture (sans buffer après)
+    // Le buffer s'appliquera entre RDV quand le Sprint 3 gérera les réservations existantes.
+    for (let t = startMin; t + serviceDuration <= endMin; t += slotStep) {
+      const activeConstraints = getConstraintsActiveAtTime(dayConstraints, date, t, t + serviceDuration)
+      if (!isServiceAllowedByConstraints(activeConstraints, serviceId)) continue
+
       const slotStart = dateAtTime(dateStr, minutesToTime(t))
       const slotEnd   = new Date(slotStart.getTime() + service.duration * 60 * 1000)
 
@@ -306,7 +388,7 @@ async function computeAvailableSlots ({
         start    : slotStart.toISOString(),
         end      : slotEnd.toISOString(),
         startTime: minutesToTime(t),
-        endTime  : minutesToTime(t + service.duration)
+        endTime  : minutesToTime(t + serviceDuration)
       })
     }
   }
@@ -317,6 +399,123 @@ async function computeAvailableSlots ({
     buffer     : BUFFER_MINUTES,
     date       : dateStr,
     message    : slots.length ? null : 'Aucun créneau disponible.'
+  }
+}
+
+const FR_DAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+const FR_MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+
+function formatDayLabel (dateStr) {
+  const d = parseDateOnly(dateStr)
+  if (!d) return dateStr
+  const js = d.getUTCDay()
+  return `${FR_DAYS[js]} ${d.getUTCDate()} ${FR_MONTHS[d.getUTCMonth()]}`
+}
+
+/**
+ * Grille semaine Planity : créneaux par jour, tous collabs ou un seul.
+ */
+async function computeBookingWeek ({
+  proId,
+  serviceId,
+  fromStr,
+  days = 7,
+  collaboratorId = null,
+  now = new Date()
+}) {
+  const service = await Service.findOne({ _id: serviceId, proId, active: true }).lean()
+  if (!service) {
+    return { error: 'Prestation introuvable ou inactive.', days: [], collaborators: [], service: null }
+  }
+
+  let collaborators = await getCollaboratorsForService(proId, serviceId)
+  if (collaboratorId) {
+    collaborators = collaborators.filter(c => String(c._id) === String(collaboratorId))
+  }
+  if (!collaborators.length) {
+    return {
+      error: 'Aucun collaborateur disponible pour cette prestation.',
+      days: [],
+      collaborators: [],
+      service: {
+        _id: service._id,
+        name: service.name,
+        duration: service.duration,
+        price: service.price
+      }
+    }
+  }
+
+  const from = parseDateOnly(fromStr)
+  if (!from) {
+    return { error: 'Date de départ invalide.', days: [], collaborators: [], service: null }
+  }
+
+  const dayResults = []
+  const cursor = new Date(from)
+
+  for (let i = 0; i < days; i++) {
+    const dateStr = formatDateOnly(cursor)
+    const slotMap = new Map() // time -> Set of collaboratorIds
+
+    for (const collab of collaborators) {
+      const result = await computeAvailableSlots({
+        proId,
+        collaboratorId : collab._id,
+        serviceId,
+        dateStr,
+        now
+      })
+
+      for (const slot of result.slots) {
+        const time = slot.startTime
+        if (!slotMap.has(time)) slotMap.set(time, new Set())
+        slotMap.get(time).add(String(collab._id))
+      }
+    }
+
+    const times = Array.from(slotMap.keys()).sort((a, b) =>
+      parseTimeToMinutes(a) - parseTimeToMinutes(b)
+    )
+
+    const byCollaborator = {}
+    for (const collab of collaborators) {
+      byCollaborator[String(collab._id)] = times.filter(t =>
+        slotMap.get(t)?.has(String(collab._id))
+      )
+    }
+
+    dayResults.push({
+      date           : dateStr,
+      label          : formatDayLabel(dateStr),
+      slots          : times.map(time => ({
+        time,
+        collaboratorIds: Array.from(slotMap.get(time) || [])
+      })),
+      byCollaborator
+    })
+
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  return {
+    service: {
+      _id      : service._id,
+      name     : service.name,
+      duration : service.duration,
+      price    : service.price
+    },
+    collaborators: collaborators.map(c => ({
+      _id       : c._id,
+      firstName : c.firstName,
+      lastName  : c.lastName,
+      photo     : c.photo,
+      isOwner   : c.isOwner
+    })),
+    from     : fromStr,
+    daysCount: days,
+    days     : dayResults,
+    error    : null
   }
 }
 
@@ -386,23 +585,57 @@ async function buildCalendarEvents ({ proId, collaboratorId, fromStr, toStr }) {
     })
   }
 
+  if (collaboratorId) {
+    const constraints = await ServiceConstraint.find({ proId, collaboratorId }).lean()
+    const cursor2 = new Date(from)
+
+    while (cursor2 <= to) {
+      const dateStr = formatDateOnly(cursor2)
+      const date    = parseDateOnly(dateStr)
+
+      for (const c of constraints) {
+        if (!constraintAppliesOnDate(c, date)) continue
+        events.push({
+          id    : `constraint-${c._id}-${dateStr}`,
+          title : c.label || 'Prestations limitées',
+          start : `${dateStr}T${c.startTime}:00`,
+          end   : `${dateStr}T${c.endTime}:00`,
+          color : c.color || '#D1A1C7',
+          extendedProps: {
+            type         : 'service_constraint',
+            constraintId : c._id,
+            serviceIds   : c.serviceIds
+          }
+        })
+      }
+
+      cursor2.setUTCDate(cursor2.getUTCDate() + 1)
+    }
+  }
+
   return events
 }
 
 module.exports = {
   BUFFER_MINUTES,
   MIN_ADVANCE_HOURS,
+  SLOT_STEP_MINUTES,
+  getSlotStepMinutes,
   DEFAULT_DAYS,
   cloneDays,
   normalizeDays,
   parseDateOnly,
   formatDateOnly,
+  formatDayLabel,
   getOrCreateWeeklySchedule,
   getOrCreateSalonSchedule,
   getWeeklyForEditor,
   saveCollaboratorWeekly,
   resetCollaboratorWeekly,
   getEffectiveDaySchedule,
+  getConstraintsForDate,
+  getCollaboratorsForService,
   computeAvailableSlots,
+  computeBookingWeek,
   buildCalendarEvents
 }
