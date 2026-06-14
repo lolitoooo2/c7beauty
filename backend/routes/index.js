@@ -13,5 +13,6 @@ router.use('/categories', require('./categories'))
 router.use('/services',   require('./services'))
 router.use('/search',     require('./search'))
 router.use('/collaborator', require('./collaborator'))
+router.use('/availability', require('./availability'))
 
 module.exports = router

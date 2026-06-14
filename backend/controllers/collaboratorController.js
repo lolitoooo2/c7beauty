@@ -243,8 +243,22 @@ exports.getMe = async (req, res) => {
 // ── GET /api/collaborator/agenda ──────────────────────
 exports.getAgenda = async (req, res) => {
   try {
-    // Sprint 2/4 : réservations réelles
-    res.json({ data: [], message: 'Agenda disponible après activation des réservations.' })
+    const collaborator = await Collaborator.findById(req.userId)
+    if (!collaborator) return res.status(404).json({ message: 'Collaborateur introuvable.' })
+
+    const { from, to } = req.query
+    if (from && to) {
+      const { buildCalendarEvents } = require('../utils/scheduleHelpers')
+      const events = await buildCalendarEvents({
+        proId          : collaborator.proId,
+        collaboratorId : collaborator._id,
+        fromStr        : from,
+        toStr          : to
+      })
+      return res.json({ data: events, bookings: [] })
+    }
+
+    res.json({ data: [], bookings: [], message: 'Agenda disponible — réservations au Sprint 3.' })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })
   }

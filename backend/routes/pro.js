@@ -6,6 +6,7 @@ const { getMe, updateMe, addShopPhoto, deleteShopPhoto, reorderShopPhotos } = re
 const { shopsUpload } = require('../middleware/upload')
 const svc = require('../controllers/serviceController')
 const col = require('../controllers/collaboratorController')
+const schedule = require('../controllers/scheduleController')
 const { avatarCollaboratorUpload } = require('../middleware/upload')
 
 router.use(auth)
@@ -33,6 +34,18 @@ router.post('/collaborators/:id/photo',           avatarCollaboratorUpload.singl
     res.status(500).json({ message: 'Erreur serveur.' })
   }
 })
+
+// Planning & horaires
+router.get('/schedule/weekly',              schedule.getWeekly)
+router.put('/schedule/weekly',              schedule.saveWeekly)
+router.delete('/schedule/weekly/custom',    schedule.resetWeekly)
+router.get('/schedule/periods',             schedule.listPeriods)
+router.post('/schedule/periods',            schedule.createPeriod)
+router.delete('/schedule/periods/:id',      schedule.removePeriod)
+router.get('/schedule/exceptions',          schedule.listExceptions)
+router.post('/schedule/exceptions',         schedule.createException)
+router.delete('/schedule/exceptions/:id',   schedule.removeException)
+router.get('/schedule/calendar',            schedule.getCalendar)
 
 // Photos du salon
 router.post('/photos',             shopsUpload.single('photo'), addShopPhoto)
