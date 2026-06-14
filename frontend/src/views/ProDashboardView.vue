@@ -127,13 +127,30 @@
             </option>
           </select>
         </div>
-        <p class="page-sub">Cliquez sur un jour pour le fermer ou ajouter une exception. Les RDV clients arrivent au Sprint 3.</p>
+        <p class="page-sub">
+          Cliquez sur un jour pour le fermer ou ajouter une exception.
+          Sélectionnez un collaborateur puis glissez sur l'agenda pour limiter des prestations à une plage horaire (comme Planity).
+        </p>
+        <div v-if="!agendaCollaboratorId" class="agenda-hint">
+          Sélectionnez un collaborateur pour gérer ses contraintes prestations.
+        </div>
         <AgendaCalendar
           ref="agendaCalRef"
           api-path="/api/pro/schedule/calendar"
           :collaborator-id="agendaCollaboratorId || null"
+          :selectable="!!agendaCollaboratorId"
           @date-click="openExceptionModal"
+          @select="openConstraintModal"
+          @event-click="onAgendaEventClick"
         />
+        <button
+          v-if="agendaCollaboratorId"
+          type="button"
+          class="btn-outline constraint-add-btn"
+          @click="openConstraintModalManual"
+        >
+          <Plus :size="14" /> Ajouter une contrainte prestation
+        </button>
       </section>
 
       <!-- ── Horaires ── -->
@@ -682,6 +699,92 @@
             <Loader2 v-if="exceptionModal.saving" :size="14" class="spin" />
             Enregistrer
           </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- Modale contrainte prestation (Planity) -->
+  <Teleport to="body">
+    <div v-if="constraintModal.open" class="modal-overlay" @click.self="constraintModal.open = false">
+      <div class="svc-modal large">
+        <div class="svc-modal__header">
+          <h3>Contrainte prestations</h3>
+          <button type="button" @click="constraintModal.open = false"><X :size="20" /></button>
+        </div>
+        <div class="svc-modal__body">
+          <p class="page-sub" style="margin-top:0">
+            Sur cette plage horaire, seules les prestations cochées seront réservables par les clients.
+          </p>
+          <div class="pf-row">
+            <div class="pf-field">
+              <label>Début</label>
+              <input v-model="constraintModal.startTime" type="time" class="svc-input" />
+            </div>
+            <div class="pf-field">
+              <label>Fin</label>
+              <input v-model="constraintModal.endTime" type="time" class="svc-input" />
+            </div>
+          </div>
+          <div class="pf-field">
+            <label>Répétition</label>
+            <select v-model="constraintModal.repeatType" class="svc-input">
+              <option value="weekly">Chaque semaine</option>
+              <option value="once">Une seule fois</option>
+            </select>
+          </div>
+          <div v-if="constraintModal.repeatType === 'weekly'" class="pf-field">
+            <label>Jour</label>
+            <select v-model.number="constraintModal.dayOfWeek" class="svc-input">
+              <option v-for="d in weekDays" :key="d.value" :value="d.value">{{ d.label }}</option>
+            </select>
+          </div>
+          <div v-else class="pf-row">
+            <div class="pf-field">
+              <label>Date début</label>
+              <input v-model="constraintModal.startDate" type="date" class="svc-input" />
+            </div>
+            <div class="pf-field">
+              <label>Date fin</label>
+              <input v-model="constraintModal.endDate" type="date" class="svc-input" />
+            </div>
+          </div>
+          <div class="pf-field">
+            <label>Prestations autorisées <span class="req">*</span></label>
+            <div class="col-services-grid">
+              <label v-for="svc in collabServicesForConstraint" :key="svc._id" class="cat-toggle">
+                <input type="checkbox" :value="svc._id" v-model="constraintModal.serviceIds" />
+                <span class="cat-toggle__chip">{{ svc.name }}</span>
+              </label>
+            </div>
+            <p v-if="!collabServicesForConstraint.length" class="empty-hint">
+              Assignez des prestations à ce collaborateur dans Mon équipe.
+            </p>
+          </div>
+          <div class="pf-field">
+            <label>Libellé <span class="svc-opt">optionnel</span></label>
+            <input v-model="constraintModal.label" type="text" class="svc-input" placeholder="Ex : Coupes matin" />
+          </div>
+        </div>
+        <p v-if="constraintModal.error" class="svc-error">{{ constraintModal.error }}</p>
+        <div class="svc-modal__footer">
+          <button
+            v-if="constraintModal.id"
+            type="button"
+            class="btn-cancel danger-text"
+            :disabled="constraintModal.saving"
+            @click="deleteConstraint"
+          >
+            Supprimer
+          </button>
+          <span v-else />
+          <div class="svc-modal__footer-right">
+            <button type="button" class="btn-cancel" @click="constraintModal.open = false">Annuler</button>
+            <button type="button" class="btn-primary" :disabled="constraintModal.saving" @click="submitConstraint">
+              <Loader2 v-if="constraintModal.saving" :size="14" class="spin" />
+              Enregistrer
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1329,6 +1432,183 @@ async function submitException () {
     exceptionModal.saving = false
   }
 }
+
+const weekDays = [
+  { value: 0, label: 'Lundi' },
+  { value: 1, label: 'Mardi' },
+  { value: 2, label: 'Mercredi' },
+  { value: 3, label: 'Jeudi' },
+  { value: 4, label: 'Vendredi' },
+  { value: 5, label: 'Samedi' },
+  { value: 6, label: 'Dimanche' }
+]
+
+const constraintModal = reactive({
+  open: false,
+  saving: false,
+  error: '',
+  id: '' as string,
+  startTime: '10:00',
+  endTime: '19:00',
+  repeatType: 'weekly' as 'weekly' | 'once',
+  dayOfWeek: 0,
+  startDate: '',
+  endDate: '',
+  serviceIds: [] as string[],
+  label: ''
+})
+
+const collabServicesForConstraint = computed(() => {
+  const collab = collaborators.value.find(c => c._id === agendaCollaboratorId.value)
+  if (!collab?.serviceIds?.length) return []
+  const ids = new Set(collab.serviceIds.map(String))
+  return allServicesFlat.value.filter(s => ids.has(String(s._id)))
+})
+
+function resetConstraintModal () {
+  Object.assign(constraintModal, {
+    open: true,
+    saving: false,
+    error: '',
+    id: '',
+    startTime: '10:00',
+    endTime: '19:00',
+    repeatType: 'weekly',
+    dayOfWeek: 0,
+    startDate: '',
+    endDate: '',
+    serviceIds: [] as string[],
+    label: ''
+  })
+}
+
+function openConstraintModalManual () {
+  if (!agendaCollaboratorId.value) {
+    toast.info('Sélectionnez d\'abord un collaborateur.')
+    return
+  }
+  resetConstraintModal()
+  const today = new Date()
+  constraintModal.startDate = today.toISOString().slice(0, 10)
+  constraintModal.endDate   = constraintModal.startDate
+  constraintModal.dayOfWeek = today.getDay() === 0 ? 6 : today.getDay() - 1
+}
+
+function openConstraintModal (payload: {
+  startTime: string
+  endTime: string
+  dateStr: string
+  dayOfWeek: number
+}) {
+  if (!agendaCollaboratorId.value) return
+  resetConstraintModal()
+  constraintModal.startTime = payload.startTime
+  constraintModal.endTime   = payload.endTime
+  constraintModal.dayOfWeek = payload.dayOfWeek
+  constraintModal.startDate = payload.dateStr
+  constraintModal.endDate   = payload.dateStr
+}
+
+async function loadConstraint (id: string) {
+  try {
+    const res  = await fetch(`/api/pro/schedule/constraints?collaboratorId=${agendaCollaboratorId.value}`, {
+      headers: { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    const c    = (data.data || []).find((x: { _id: string }) => x._id === id)
+    if (!c) return
+    Object.assign(constraintModal, {
+      open: true,
+      saving: false,
+      error: '',
+      id: c._id,
+      startTime: c.startTime,
+      endTime: c.endTime,
+      repeatType: c.repeatType,
+      dayOfWeek: c.dayOfWeek ?? 0,
+      startDate: c.startDate ? String(c.startDate).slice(0, 10) : '',
+      endDate: c.endDate ? String(c.endDate).slice(0, 10) : '',
+      serviceIds: (c.serviceIds || []).map((s: string | { _id: string }) =>
+        typeof s === 'string' ? s : s._id
+      ),
+      label: c.label || ''
+    })
+  } catch {
+    toast.error('Impossible de charger la contrainte.')
+  }
+}
+
+function onAgendaEventClick ({ type, constraintId }: { type?: string; constraintId?: string }) {
+  if (type === 'service_constraint' && constraintId) {
+    loadConstraint(constraintId)
+  }
+}
+
+async function submitConstraint () {
+  if (!agendaCollaboratorId.value) return
+  if (!constraintModal.serviceIds.length) {
+    constraintModal.error = 'Sélectionnez au moins une prestation.'
+    return
+  }
+
+  constraintModal.error  = ''
+  constraintModal.saving = true
+  try {
+    const body: Record<string, unknown> = {
+      collaboratorId : agendaCollaboratorId.value,
+      startTime      : constraintModal.startTime,
+      endTime        : constraintModal.endTime,
+      repeatType     : constraintModal.repeatType,
+      serviceIds     : constraintModal.serviceIds,
+      label          : constraintModal.label
+    }
+    if (constraintModal.repeatType === 'weekly') {
+      body.dayOfWeek = constraintModal.dayOfWeek
+    } else {
+      body.startDate = constraintModal.startDate
+      body.endDate   = constraintModal.endDate || constraintModal.startDate
+    }
+
+    const isEdit = !!constraintModal.id
+    const res    = await fetch(
+      isEdit ? `/api/pro/schedule/constraints/${constraintModal.id}` : '/api/pro/schedule/constraints',
+      {
+        method  : isEdit ? 'PUT' : 'POST',
+        headers : { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
+        body    : JSON.stringify(body)
+      }
+    )
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Contrainte enregistrée.')
+    constraintModal.open = false
+    agendaCalRef.value?.refetch?.()
+  } catch (err: unknown) {
+    constraintModal.error = err instanceof Error ? err.message : 'Erreur'
+  } finally {
+    constraintModal.saving = false
+  }
+}
+
+async function deleteConstraint () {
+  if (!constraintModal.id || !confirm('Supprimer cette contrainte ?')) return
+  constraintModal.saving = true
+  try {
+    const res  = await fetch(`/api/pro/schedule/constraints/${constraintModal.id}`, {
+      method  : 'DELETE',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Contrainte supprimée.')
+    constraintModal.open = false
+    agendaCalRef.value?.refetch?.()
+  } catch (err: unknown) {
+    constraintModal.error = err instanceof Error ? err.message : 'Erreur'
+  } finally {
+    constraintModal.saving = false
+  }
+}
 </script>
 
 <style>
@@ -1428,6 +1708,19 @@ body { margin: 0; }
   font-family: "Montserrat", sans-serif; font-size: 0.82rem; color: #4F3942;
   background: #fff;
 }
+.agenda-hint {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: #FDFBFA;
+  border: 1px dashed #E4E0DC;
+  border-radius: 10px;
+}
+.constraint-add-btn { margin-top: 1rem; }
+.svc-modal__footer-right { display: flex; gap: 0.5rem; margin-left: auto; }
+.svc-modal__footer { display: flex; align-items: center; gap: 0.75rem; }
+.danger-text { color: #c0392b !important; }
 .page-title {
   font-family: "Playfair Display", Georgia, serif;
   font-size: 2rem; font-weight: 700; color: #4F3942; margin-bottom: 1.75rem;

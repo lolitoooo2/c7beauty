@@ -21,11 +21,13 @@ const props = defineProps<{
   apiPath: string
   collaboratorId?: string | null
   initialView?: 'timeGridWeek' | 'dayGridMonth' | 'timeGridDay'
+  selectable?: boolean
 }>()
 
 const emit = defineEmits<{
   dateClick: [payload: { dateStr: string }]
-  eventClick: [payload: { exceptionId?: string; type?: string }]
+  eventClick: [payload: { exceptionId?: string; constraintId?: string; type?: string }]
+  select: [payload: { start: string; end: string; startTime: string; endTime: string; dateStr: string; dayOfWeek: number }]
 }>()
 
 const authStore = useAuthStore()
@@ -63,14 +65,29 @@ const calendarOptions = computed<CalendarOptions>(() => ({
   slotMaxTime    : '21:00:00',
   allDaySlot     : true,
   nowIndicator   : true,
-  selectable     : false,
+  selectable     : !!props.selectable,
+  selectMirror   : !!props.selectable,
   events         : fetchEvents,
   dateClick (info: DateClickArg) {
+    if (props.selectable) return
     emit('dateClick', { dateStr: info.dateStr.slice(0, 10) })
   },
+  select (info) {
+    if (!props.selectable) return
+    const start = info.start
+    const end   = info.end
+    const dateStr = info.startStr.slice(0, 10)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const startTime = `${pad(start.getHours())}:${pad(start.getMinutes())}`
+    const endTime   = `${pad(end.getHours())}:${pad(end.getMinutes())}`
+    const js = start.getDay()
+    const dayOfWeek = js === 0 ? 6 : js - 1
+    emit('select', { start: info.startStr, end: info.endStr, startTime, endTime, dateStr, dayOfWeek })
+    info.view.calendar.unselect()
+  },
   eventClick (info: EventClickArg) {
-    const ex = info.event.extendedProps as { exceptionId?: string; type?: string }
-    emit('eventClick', { exceptionId: ex.exceptionId, type: ex.type })
+    const ex = info.event.extendedProps as { exceptionId?: string; constraintId?: string; type?: string }
+    emit('eventClick', { exceptionId: ex.exceptionId, constraintId: ex.constraintId, type: ex.type })
   }
 }))
 
