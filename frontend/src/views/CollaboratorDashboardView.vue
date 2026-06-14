@@ -83,7 +83,7 @@
           <div class="collab-summary__card">
             <CalendarCheck :size="20" />
             <div>
-              <span class="collab-summary__value">{{ bookings.length }}</span>
+              <span class="collab-summary__value">—</span>
               <span class="collab-summary__label">RDV {{ tabLabel }}</span>
             </div>
           </div>
@@ -96,25 +96,13 @@
           </div>
         </div>
 
-        <section class="collab-panel">
-          <div class="collab-panel__head">
-            <h2>Rendez-vous {{ tabLabel }}</h2>
-            <span class="collab-panel__count">{{ bookings.length }} résultat(s)</span>
-          </div>
-
-          <div v-if="loading" class="collab-empty">
-            <Loader2 :size="28" class="spin" />
-          </div>
-
-          <div v-else-if="bookings.length === 0" class="collab-empty">
-            <CalendarDays :size="40" />
-            <p>Aucun rendez-vous {{ tabLabel }}.</p>
-            <span class="collab-empty__hint">Vos réservations apparaîtront ici dès l'activation du module RDV.</span>
-          </div>
-
-          <ul v-else class="collab-list">
-            <li v-for="b in bookings" :key="b._id" class="collab-list__item">{{ b.label }}</li>
-          </ul>
+        <section class="collab-panel collab-panel--calendar">
+          <AgendaCalendar
+            :key="activeTab"
+            api-path="/api/collaborator/schedule/calendar"
+            :initial-view="calendarView"
+          />
+          <p class="collab-rdv-hint">Les rendez-vous clients s'afficheront ici au Sprint 3.</p>
         </section>
       </main>
     </div>
@@ -127,6 +115,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { CalendarDays, CalendarCheck, Clock, Loader2, LogOut } from 'lucide-vue-next'
 import { useAuthStore, type CollaboratorUser } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import AgendaCalendar from '@/components/AgendaCalendar.vue'
 
 const authStore = useAuthStore()
 const router    = useRouter()
@@ -134,9 +123,7 @@ const toast     = useToast()
 
 const collab    = computed(() => authStore.user as CollaboratorUser | null)
 const salonName = ref('Mon salon')
-const loading   = ref(true)
-const bookings  = ref<{ _id: string; label: string }[]>([])
-const activeTab = ref<'today' | 'week' | 'month'>('today')
+const activeTab = ref<'today' | 'week' | 'month'>('week')
 
 const tabs = [
   { id: 'today' as const, label: 'Aujourd\'hui', icon: CalendarCheck },
@@ -162,8 +149,13 @@ const tabTitle = computed(() => {
   return 'Mois'
 })
 
-async function loadAgenda () {
-  loading.value = true
+const calendarView = computed(() => {
+  if (activeTab.value === 'today') return 'timeGridDay' as const
+  if (activeTab.value === 'month') return 'dayGridMonth' as const
+  return 'timeGridWeek' as const
+})
+
+async function loadProfile () {
   try {
     const meRes = await fetch('/api/collaborator/me', {
       headers: { Authorization: `Bearer ${authStore.token}` }
@@ -172,16 +164,8 @@ async function loadAgenda () {
       const meData = await meRes.json()
       salonName.value = meData.pro?.salonName || 'Salon'
     }
-
-    const res  = await fetch('/api/collaborator/agenda', {
-      headers: { Authorization: `Bearer ${authStore.token}` }
-    })
-    const data = await res.json()
-    bookings.value = data.data || []
   } catch {
-    toast.error('Impossible de charger l\'agenda.')
-  } finally {
-    loading.value = false
+    toast.error('Impossible de charger le profil.')
   }
 }
 
@@ -190,7 +174,7 @@ function handleLogout () {
   router.push('/login/collaborateur')
 }
 
-onMounted(loadAgenda)
+onMounted(loadProfile)
 </script>
 
 <style scoped>
@@ -570,8 +554,9 @@ onMounted(loadAgenda)
     max-width: 360px;
   }
 
-  .collab-list {
-    padding: 0.75rem 1rem 1rem;
+  .collab-panel--calendar { padding: 0.5rem; border: none; box-shadow: none; background: transparent; }
+  .collab-rdv-hint {
+    margin: 0.75rem 0 0; font-size: 0.78rem; color: #aaa; text-align: center;
   }
 }
 

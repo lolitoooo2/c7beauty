@@ -117,15 +117,40 @@
       </section>
 
       <!-- ── Agenda ── -->
-      <section v-else-if="activeSection === 'agenda'" class="section-content">
-        <h1 class="page-title">Mon agenda</h1>
-        <div class="empty-state">
-          <CalendarDays :size="36" />
-          <p>L'agenda interactif arrive bientôt.</p>
+      <section v-else-if="activeSection === 'agenda'" class="section-content section-content--wide">
+        <div class="svc-header">
+          <h1 class="page-title" style="margin:0">Mon agenda</h1>
+          <select v-model="agendaCollaboratorId" class="agenda-select">
+            <option value="">Salon (global)</option>
+            <option v-for="c in collaborators" :key="c._id" :value="c._id">
+              {{ c.firstName }} {{ c.lastName }}
+            </option>
+          </select>
         </div>
+        <p class="page-sub">Cliquez sur un jour pour le fermer ou ajouter une exception. Les RDV clients arrivent au Sprint 3.</p>
+        <AgendaCalendar
+          ref="agendaCalRef"
+          api-path="/api/pro/schedule/calendar"
+          :collaborator-id="agendaCollaboratorId || null"
+          @date-click="openExceptionModal"
+        />
       </section>
 
-      <!-- ── Prestations ── -->
+      <!-- ── Horaires ── -->
+      <section v-else-if="activeSection === 'hours'" class="section-content">
+        <div class="svc-header">
+          <h1 class="page-title" style="margin:0">Horaires d'ouverture</h1>
+          <select v-model="hoursCollaboratorId" class="agenda-select">
+            <option value="">Salon (par défaut)</option>
+            <option v-for="c in nonOwnerCollaborators" :key="c._id" :value="c._id">
+              {{ c.firstName }} {{ c.lastName }}
+            </option>
+          </select>
+        </div>
+        <p class="page-sub">Semaine type — appliquée toute l'année. Utilisez l'agenda pour fermer des jours ponctuels.</p>
+        <WeeklyScheduleEditor :collaborator-id="hoursCollaboratorId || null" />
+      </section>
+
       <!-- ── Prestations ── -->
       <section v-else-if="activeSection === 'services'" class="section-content">
         <div class="svc-header">
@@ -618,6 +643,49 @@
       </div>
     </div>
   </Teleport>
+
+  <!-- Modale exception planning -->
+  <Teleport to="body">
+    <div v-if="exceptionModal.open" class="modal-overlay" @click.self="exceptionModal.open = false">
+      <div class="svc-modal">
+        <div class="svc-modal__header">
+          <h3>{{ exceptionModal.dateStr }} — Exception</h3>
+          <button type="button" @click="exceptionModal.open = false"><X :size="20" /></button>
+        </div>
+        <div class="svc-modal__body">
+          <div class="pf-field">
+            <label>Type</label>
+            <select v-model="exceptionModal.type" class="svc-input">
+              <option value="closed">Fermé</option>
+              <option value="custom_hours">Horaires spéciaux</option>
+            </select>
+          </div>
+          <div v-if="exceptionModal.type === 'custom_hours'" class="pf-row">
+            <div class="pf-field">
+              <label>Ouverture</label>
+              <input v-model="exceptionModal.start" type="time" class="svc-input" />
+            </div>
+            <div class="pf-field">
+              <label>Fermeture</label>
+              <input v-model="exceptionModal.end" type="time" class="svc-input" />
+            </div>
+          </div>
+          <div class="pf-field">
+            <label>Motif <span class="svc-opt">optionnel</span></label>
+            <input v-model="exceptionModal.label" type="text" class="svc-input" placeholder="Congés, férié…" />
+          </div>
+        </div>
+        <p v-if="exceptionModal.error" class="svc-error">{{ exceptionModal.error }}</p>
+        <div class="svc-modal__footer">
+          <button type="button" class="btn-cancel" @click="exceptionModal.open = false">Annuler</button>
+          <button type="button" class="btn-primary" :disabled="exceptionModal.saving" @click="submitException">
+            <Loader2 v-if="exceptionModal.saving" :size="14" class="spin" />
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -632,6 +700,8 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { ProUser } from '@/stores/auth'
+import AgendaCalendar from '@/components/AgendaCalendar.vue'
+import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor.vue'
 
 const authStore   = useAuthStore()
 const router      = useRouter()
@@ -713,6 +783,7 @@ const kycLabel = computed(() => {
 const navItems = [
   { id: 'home',     label: 'Accueil',         icon: LayoutDashboard },
   { id: 'agenda',   label: 'Mon agenda',      icon: CalendarDays    },
+  { id: 'hours',    label: 'Horaires',        icon: Clock           },
   { id: 'services', label: 'Prestations',     icon: Scissors        },
   { id: 'team',     label: 'Équipe',          icon: Users           },
   { id: 'medias',   label: 'Mes photos',      icon: Images          },
@@ -1201,7 +1272,63 @@ onMounted(async () => {
 
 watch(activeSection, (section) => {
   if (section === 'team') fetchCollaborators()
+  if (section === 'agenda' || section === 'hours') fetchCollaborators()
 })
+
+// ── Planning Sprint 2 ─────────────────────────────────
+const agendaCollaboratorId = ref('')
+const hoursCollaboratorId  = ref('')
+const agendaCalRef         = ref<{ refetch?: () => void } | null>(null)
+
+const nonOwnerCollaborators = computed(() =>
+  collaborators.value.filter(c => !c.isOwner)
+)
+
+const exceptionModal = reactive({
+  open: false, saving: false, error: '',
+  dateStr: '',
+  type: 'closed' as 'closed' | 'custom_hours',
+  start: '09:00', end: '17:00',
+  label: ''
+})
+
+function openExceptionModal ({ dateStr }: { dateStr: string }) {
+  Object.assign(exceptionModal, {
+    open: true, saving: false, error: '',
+    dateStr, type: 'closed', start: '09:00', end: '17:00', label: ''
+  })
+}
+
+async function submitException () {
+  exceptionModal.error = ''
+  exceptionModal.saving = true
+  try {
+    const body: Record<string, unknown> = {
+      startDate      : exceptionModal.dateStr,
+      endDate        : exceptionModal.dateStr,
+      type           : exceptionModal.type,
+      label          : exceptionModal.label,
+      collaboratorId : agendaCollaboratorId.value || null
+    }
+    if (exceptionModal.type === 'custom_hours') {
+      body.slots = [{ start: exceptionModal.start, end: exceptionModal.end }]
+    }
+    const res = await fetch('/api/pro/schedule/exceptions', {
+      method  : 'POST',
+      headers : { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.token}` },
+      body    : JSON.stringify(body)
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Exception enregistrée.')
+    exceptionModal.open = false
+    agendaCalRef.value?.refetch?.()
+  } catch (err: unknown) {
+    exceptionModal.error = err instanceof Error ? err.message : 'Erreur'
+  } finally {
+    exceptionModal.saving = false
+  }
+}
 </script>
 
 <style>
@@ -1295,6 +1422,12 @@ body { margin: 0; }
 
 /* ── Section ── */
 .section-content { padding: 2rem 2rem 3rem; max-width: 900px; }
+.section-content--wide { max-width: 1100px; }
+.agenda-select {
+  border: 1px solid #E4E0DC; border-radius: 10px; padding: 0.5rem 0.75rem;
+  font-family: "Montserrat", sans-serif; font-size: 0.82rem; color: #4F3942;
+  background: #fff;
+}
 .page-title {
   font-family: "Playfair Display", Georgia, serif;
   font-size: 2rem; font-weight: 700; color: #4F3942; margin-bottom: 1.75rem;
