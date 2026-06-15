@@ -4,8 +4,8 @@ const Service      = require('../models/Service')
 const Collaborator = require('../models/Collaborator')
 const Pro          = require('../models/Pro')
 const Client       = require('../models/Client')
+const mongoose     = require('mongoose')
 const {
-  isSlotAvailable,
   resolveCollaboratorForSlot,
   holdExpiresAt,
   HOLD_MINUTES
@@ -13,10 +13,10 @@ const {
 const { dateAtTime, computeAvailableSlots } = require('../utils/scheduleHelpers')
 const { getPeriodBoundsParis } = require('../utils/timezoneHelpers')
 const {
-  computeBookingPrice,
-  applyLoyaltyAfterBooking,
   getLoyaltyPreview
 } = require('../utils/loyaltyHelpers')
+const { isStripeEnabled, COMMISSION_RATE } = require('../utils/stripeHelpers')
+const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
 
 function parseSlotTimes (dateStr, startTime, duration) {
   const start = dateAtTime(dateStr, startTime)
@@ -157,6 +157,12 @@ exports.createHold = async (req, res) => {
 // ── POST /api/bookings/confirm ────────────────────────
 exports.confirmHold = async (req, res) => {
   try {
+    if (isStripeEnabled()) {
+      return res.status(400).json({
+        message : 'Utilisez le paiement en ligne pour confirmer votre rendez-vous.'
+      })
+    }
+
     if (req.userRole !== 'client') {
       return res.status(401).json({ message: 'Connectez-vous en tant que client pour confirmer.' })
     }
@@ -164,77 +170,19 @@ exports.confirmHold = async (req, res) => {
     const { holdId } = req.body
     if (!holdId) return res.status(400).json({ message: 'holdId requis.' })
 
-    const hold = await SlotHold.findById(holdId)
-    if (!hold || hold.expiresAt < new Date()) {
-      return res.status(410).json({ message: 'La réservation temporaire a expiré. Choisissez un autre créneau.' })
-    }
-
-    const service = await Service.findById(hold.serviceId)
-    if (!service) return res.status(404).json({ message: 'Prestation introuvable.' })
-
-    const free = await isSlotAvailable({
-      proId          : hold.proId,
-      collaboratorId : hold.collaboratorId,
-      start          : hold.start,
-      end            : hold.end,
-      excludeHoldId  : hold._id
+    const { booking, loyalty } = await fulfillHoldToBooking({
+      holdId,
+      clientId : req.userId
     })
-    if (!free) {
-      await SlotHold.findByIdAndDelete(hold._id)
-      return res.status(409).json({ message: 'Ce créneau vient d\'être pris.' })
-    }
-
-    const client = await Client.findById(req.userId)
-    if (!client) return res.status(404).json({ message: 'Client introuvable.' })
-
-    const { originalPrice, finalPrice, halfPriceApplied, discountPercent } =
-      computeBookingPrice(client, service.price)
-
-    const booking = await Booking.create({
-      proId          : hold.proId,
-      clientId       : req.userId,
-      collaboratorId : hold.collaboratorId,
-      serviceId      : hold.serviceId,
-      start          : hold.start,
-      end            : hold.end,
-      status         : 'confirmed',
-      serviceName    : service.name,
-      duration       : service.duration,
-      price          : finalPrice,
-      originalPrice,
-      discountPercent,
-      cashbackEarned : 0
-    })
-
-    const { cashbackEarned } = await applyLoyaltyAfterBooking(client, {
-      originalPrice,
-      halfPriceApplied
-    })
-
-    if (cashbackEarned > 0) {
-      booking.cashbackEarned = cashbackEarned
-      await booking.save()
-    }
-
-    await SlotHold.findByIdAndDelete(hold._id)
-
-    const populated = await Booking.findById(booking._id)
-      .populate('proId', 'salonName address city postalCode')
-      .populate('collaboratorId', 'firstName lastName photo')
-      .lean()
 
     res.status(201).json({
       message : 'Rendez-vous confirmé !',
-      booking : formatBooking(populated),
-      loyalty : {
-        halfPriceApplied,
-        discountPercent,
-        cashbackEarned
-      }
+      booking : formatBooking(booking),
+      loyalty
     })
   } catch (err) {
     console.error('[booking.confirmHold]', err)
-    res.status(500).json({ message: 'Erreur serveur.' })
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
   }
 }
 
@@ -407,19 +355,42 @@ exports.cancelByCollaborator = async (req, res) => {
 }
 
 // ── GET /api/pro/stats ────────────────────────────────
+function buildProStatsFilter (proId, collaboratorId) {
+  const filter = {
+    proId  : new mongoose.Types.ObjectId(String(proId)),
+    status : 'confirmed'
+  }
+  if (collaboratorId) {
+    filter.collaboratorId = new mongoose.Types.ObjectId(String(collaboratorId))
+  }
+  return filter
+}
+
+function inRangeFilter (bounds) {
+  return { start: { $gte: bounds.start, $lt: bounds.end } }
+}
+
+async function sumBookingRevenue (filter, bounds) {
+  const [result] = await Booking.aggregate([
+    { $match: { ...filter, ...inRangeFilter(bounds) } },
+    { $group: { _id: null, total: { $sum: { $ifNull: ['$price', 0] } } } }
+  ])
+  return result?.total ?? 0
+}
+
+function toProShare (grossEur) {
+  const net = grossEur * (1 - COMMISSION_RATE)
+  return Math.round(net * 100) / 100
+}
+
 exports.getProStats = async (req, res) => {
   try {
     const proId = req.userId
-    const base  = { proId, status: 'confirmed' }
-    if (req.query.collaboratorId) base.collaboratorId = req.query.collaboratorId
+    const filter = buildProStatsFilter(proId, req.query.collaboratorId || null)
 
     const dayBounds   = getPeriodBoundsParis('day')
     const weekBounds  = getPeriodBoundsParis('week')
     const monthBounds = getPeriodBoundsParis('month')
-
-    const inRange = (bounds) => ({
-      start: { $gte: bounds.start, $lt: bounds.end }
-    })
 
     const [
       todayCount,
@@ -427,29 +398,24 @@ exports.getProStats = async (req, res) => {
       monthCount,
       totalConfirmed,
       totalCancelled,
-      revenueToday,
-      revenueWeek,
-      revenueMonth,
+      grossToday,
+      grossWeek,
+      grossMonth,
       nextBooking
     ] = await Promise.all([
-      Booking.countDocuments({ ...base, ...inRange(dayBounds) }),
-      Booking.countDocuments({ ...base, ...inRange(weekBounds) }),
-      Booking.countDocuments({ ...base, ...inRange(monthBounds) }),
-      Booking.countDocuments({ ...base }),
-      Booking.countDocuments({ proId, status: 'cancelled', ...(base.collaboratorId ? { collaboratorId: base.collaboratorId } : {}) }),
-      Booking.aggregate([
-        { $match: { ...base, start: { $gte: dayBounds.start, $lt: dayBounds.end } } },
-        { $group: { _id: null, total: { $sum: '$price' } } }
-      ]),
-      Booking.aggregate([
-        { $match: { ...base, start: { $gte: weekBounds.start, $lt: weekBounds.end } } },
-        { $group: { _id: null, total: { $sum: '$price' } } }
-      ]),
-      Booking.aggregate([
-        { $match: { ...base, start: { $gte: monthBounds.start, $lt: monthBounds.end } } },
-        { $group: { _id: null, total: { $sum: '$price' } } }
-      ]),
-      Booking.findOne({ ...base, start: { $gte: new Date() } })
+      Booking.countDocuments({ ...filter, ...inRangeFilter(dayBounds) }),
+      Booking.countDocuments({ ...filter, ...inRangeFilter(weekBounds) }),
+      Booking.countDocuments({ ...filter, ...inRangeFilter(monthBounds) }),
+      Booking.countDocuments({ ...filter }),
+      Booking.countDocuments({
+        proId  : filter.proId,
+        status : 'cancelled',
+        ...(filter.collaboratorId ? { collaboratorId: filter.collaboratorId } : {})
+      }),
+      sumBookingRevenue(filter, dayBounds),
+      sumBookingRevenue(filter, weekBounds),
+      sumBookingRevenue(filter, monthBounds),
+      Booking.findOne({ ...filter, start: { $gte: new Date() } })
         .sort({ start: 1 })
         .populate('clientId', 'firstName lastName phone')
         .lean()
@@ -461,9 +427,12 @@ exports.getProStats = async (req, res) => {
       monthCount,
       totalConfirmed,
       totalCancelled,
-      revenueToday  : revenueToday[0]?.total ?? 0,
-      revenueWeek   : revenueWeek[0]?.total ?? 0,
-      revenueMonth  : revenueMonth[0]?.total ?? 0,
+      revenueToday  : toProShare(grossToday),
+      revenueWeek   : toProShare(grossWeek),
+      revenueMonth  : toProShare(grossMonth),
+      revenueTodayGross : grossToday,
+      revenueWeekGross  : grossWeek,
+      revenueMonthGross : grossMonth,
       nextBooking   : nextBooking
         ? {
             _id         : nextBooking._id,

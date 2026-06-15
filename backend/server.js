@@ -8,10 +8,20 @@ const path     = require('path')
 const verifyToken = require('./middleware/auth')
 const routes = require('./routes')
 
+const stripeWebhook = require('./controllers/stripeWebhookController')
+
 const app  = express()
 const PORT = process.env.PORT || 3000
 
 app.use(cors())
+
+// Webhook Stripe — body brut obligatoire (avant express.json)
+app.post(
+  '/api/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  stripeWebhook.handleStripeWebhook
+)
+
 app.use(express.json())
 
 // ── Accès direct au dossier uploads bloqué ──────────────
@@ -48,12 +58,19 @@ app.get('/api/media/shops/:filename', (req, res) => {
 app.use('/api', routes)
 
 const { seedCategories } = require('./seed/categories')
+const { startScheduledJobs } = require('./jobs')
+const Client = require('./models/Client')
 
 mongoose
   .connect(process.env.MONGO_URI || 'mongodb://localhost:27017/c7beauty')
   .then(async () => {
     console.log('MongoDB connecté')
     await seedCategories()
+    await Client.updateMany(
+      { emailVerified: { $exists: false } },
+      { $set: { emailVerified: true } }
+    )
+    startScheduledJobs()
   })
   .catch((err) => console.warn('MongoDB non connecté :', err.message))
 
