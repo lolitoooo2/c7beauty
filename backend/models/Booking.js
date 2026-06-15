@@ -1,0 +1,60 @@
+const mongoose = require('mongoose')
+
+const bookingSchema = new mongoose.Schema(
+  {
+    proId : {
+      type     : mongoose.Schema.Types.ObjectId,
+      ref      : 'Pro',
+      required : true,
+      index    : true
+    },
+    clientId : {
+      type     : mongoose.Schema.Types.ObjectId,
+      ref      : 'Client',
+      required : true,
+      index    : true
+    },
+    collaboratorId : {
+      type     : mongoose.Schema.Types.ObjectId,
+      ref      : 'Collaborator',
+      required : true,
+      index    : true
+    },
+    serviceId : {
+      type     : mongoose.Schema.Types.ObjectId,
+      ref      : 'Service',
+      required : true
+    },
+
+    start : { type: Date, required: true, index: true },
+    end   : { type: Date, required: true },
+
+    status : {
+      type    : String,
+      enum    : ['confirmed', 'cancelled', 'completed'],
+      default : 'confirmed',
+      index   : true
+    },
+
+    serviceName : { type: String, required: true },
+    duration    : { type: Number, required: true },
+    price       : { type: Number, required: true },
+
+    cancelledAt : { type: Date, default: null },
+    cancelledBy : {
+      type : String,
+      enum : ['client', 'pro', 'collaborator', null],
+      default : null
+    }
+  },
+  {
+    timestamps : true,
+    collection : 'bookings'
+  }
+)
+
+bookingSchema.index({ proId: 1, start: 1 })
+bookingSchema.index({ collaboratorId: 1, start: 1, end: 1 })
+bookingSchema.index({ clientId: 1, start: -1 })
+
+module.exports = mongoose.model('Booking', bookingSchema)
