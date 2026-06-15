@@ -13,4 +13,8 @@ router.put('/',          updateMe)
 router.put('/avatar',    avatarClientUpload.single('avatar'), uploadAvatar)
 router.delete('/avatar', deleteAvatar)
 
+const booking = require('../controllers/bookingController')
+router.get('/bookings',              booking.listForClient)
+router.patch('/bookings/:id/cancel', booking.cancelByClient)
+
 module.exports = router

@@ -51,6 +51,9 @@ router.post('/schedule/constraints',          schedule.createConstraint)
 router.put('/schedule/constraints/:id',       schedule.updateConstraint)
 router.delete('/schedule/constraints/:id',    schedule.removeConstraint)
 
+const booking = require('../controllers/bookingController')
+router.get('/bookings', booking.listForPro)
+
 // Photos du salon
 router.post('/photos',             shopsUpload.single('photo'), addShopPhoto)
 router.delete('/photos/:filename', deleteShopPhoto)
