@@ -111,31 +111,73 @@
 
         <!-- Prochaine réservation -->
         <h2 class="section-title">Prochaine réservation</h2>
-        <div class="empty-state">
+        <div v-if="bookingsLoading" class="svc-loading-inline">
+          <Loader2 :size="20" class="spin" />
+        </div>
+        <div v-else-if="nextBooking" class="booking-card">
+          <div class="booking-card__main">
+            <h3>{{ nextBooking.pro?.salonName }}</h3>
+            <p class="booking-card__svc">{{ nextBooking.serviceName }}</p>
+            <p class="booking-card__when">{{ formatBookingDate(nextBooking.start) }}</p>
+            <p v-if="nextBooking.collaborator" class="booking-card__who">
+              avec {{ nextBooking.collaborator.firstName }} {{ nextBooking.collaborator.lastName }}
+            </p>
+          </div>
+          <span class="booking-card__price">{{ nextBooking.price.toFixed(2) }} €</span>
+        </div>
+        <div v-else class="empty-state">
           <CalendarX :size="36" />
           <p>Aucune réservation à venir.</p>
-          <button class="btn-primary" @click="activeSection = 'booking'">
-            Réserver maintenant
-          </button>
+          <router-link to="/recherche" class="btn-primary">Réserver maintenant</router-link>
         </div>
       </section>
 
       <!-- ── Réservations ── -->
       <section v-else-if="activeSection === 'booking'" class="section-content">
         <h1 class="page-title">Réserver une prestation</h1>
-        <div class="empty-state">
-          <Sparkles :size="36" />
-          <p>Le moteur de réservation arrive bientôt.</p>
-        </div>
+        <p class="page-sub">Recherchez un salon près de chez vous et choisissez votre prestation.</p>
+        <router-link to="/recherche" class="btn-primary">Lancer une recherche</router-link>
       </section>
 
       <!-- ── Historique ── -->
       <section v-else-if="activeSection === 'history'" class="section-content">
         <h1 class="page-title">Mes réservations</h1>
-        <div class="empty-state">
-          <ClipboardList :size="36" />
-          <p>Votre historique de réservations apparaîtra ici.</p>
+
+        <div v-if="bookingsLoading" class="svc-loading-inline">
+          <Loader2 :size="22" class="spin" /> Chargement…
         </div>
+
+        <template v-else>
+          <h2 class="section-title">À venir</h2>
+          <div v-if="!upcomingBookings.length" class="empty-state compact">
+            <p>Aucun rendez-vous à venir.</p>
+          </div>
+          <div v-else class="booking-list">
+            <article v-for="b in upcomingBookings" :key="b._id" class="booking-card booking-card--row">
+              <div class="booking-card__main">
+                <h3>{{ b.pro?.salonName }}</h3>
+                <p class="booking-card__svc">{{ b.serviceName }} · {{ b.price.toFixed(2) }} €</p>
+                <p class="booking-card__when">{{ formatBookingDate(b.start) }}</p>
+              </div>
+              <button type="button" class="btn-outline danger" @click="cancelBooking(b._id)">Annuler</button>
+            </article>
+          </div>
+
+          <h2 class="section-title">Passées / annulées</h2>
+          <div v-if="!pastBookings.length" class="empty-state compact">
+            <p>Aucun historique pour l'instant.</p>
+          </div>
+          <div v-else class="booking-list">
+            <article v-for="b in pastBookings" :key="b._id" class="booking-card booking-card--row muted">
+              <div class="booking-card__main">
+                <h3>{{ b.pro?.salonName }}</h3>
+                <p class="booking-card__svc">{{ b.serviceName }}</p>
+                <p class="booking-card__when">{{ formatBookingDate(b.start) }}</p>
+                <span class="booking-status" :class="b.status">{{ statusLabel(b.status) }}</span>
+              </div>
+            </article>
+          </div>
+        </template>
       </section>
 
       <!-- ── Cagnotte ── -->
@@ -267,7 +309,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import {
   LayoutDashboard, CalendarCheck, ClipboardList, Wallet,
@@ -283,6 +325,22 @@ const router        = useRouter()
 const toast         = useToast()
 const sidebarOpen   = ref(false)
 const activeSection = ref('home')
+
+interface BookingItem {
+  _id: string
+  start: string
+  end: string
+  status: string
+  serviceName: string
+  price: number
+  pro?: { salonName: string; address?: string; city?: string; postalCode?: string }
+  collaborator?: { firstName: string; lastName: string; photo?: string | null }
+}
+
+const bookingsLoading   = ref(false)
+const upcomingBookings  = ref<BookingItem[]>([])
+const pastBookings      = ref<BookingItem[]>([])
+const nextBooking       = computed(() => upcomingBookings.value[0] || null)
 
 const client = computed(() => authStore.user as ClientUser | null)
 
@@ -444,6 +502,59 @@ function handleLogout() {
   toast.info('À bientôt !')
   router.push('/')
 }
+
+function formatBookingDate (iso: string) {
+  return new Date(iso).toLocaleString('fr-FR', {
+    timeZone: 'Europe/Paris',
+    weekday: 'long', day: 'numeric', month: 'long',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
+
+function statusLabel (status: string) {
+  if (status === 'cancelled') return 'Annulé'
+  if (status === 'completed') return 'Terminé'
+  return 'Passé'
+}
+
+async function fetchBookings () {
+  bookingsLoading.value = true
+  try {
+    const headers = { Authorization: `Bearer ${authStore.token}` }
+    const [upRes, pastRes] = await Promise.all([
+      fetch('/api/client/bookings?upcoming=1', { headers }),
+      fetch('/api/client/bookings?past=1', { headers })
+    ])
+    if (upRes.ok) {
+      const data = await upRes.json()
+      upcomingBookings.value = data.data || []
+    }
+    if (pastRes.ok) {
+      const data = await pastRes.json()
+      pastBookings.value = data.data || []
+    }
+  } catch { /* ignore */ }
+  finally { bookingsLoading.value = false }
+}
+
+async function cancelBooking (id: string) {
+  if (!confirm('Annuler ce rendez-vous ?')) return
+  try {
+    const res = await fetch(`/api/client/bookings/${id}/cancel`, {
+      method  : 'PATCH',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Rendez-vous annulé.')
+    fetchBookings()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  }
+}
+
+onMounted(fetchBookings)
+watch(activeSection, (s) => { if (s === 'history' || s === 'home') fetchBookings() })
 </script>
 
 <style>
@@ -777,6 +888,68 @@ body { margin: 0; }
   font-weight: 300;
   color: #aaa;
 }
+
+.empty-state.compact { padding: 1.5rem; }
+
+.page-sub {
+  color: #888;
+  font-size: 0.9rem;
+  margin: -1rem 0 1.25rem;
+}
+
+.svc-loading-inline {
+  display: flex; align-items: center; gap: 0.5rem; color: #aaa; padding: 1rem 0;
+}
+
+.booking-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 2rem; }
+
+.booking-card {
+  background: #fff;
+  border: 1px solid #E4E0DC;
+  border-radius: 14px;
+  padding: 1.15rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.booking-card--row { align-items: flex-start; }
+.booking-card.muted { opacity: 0.75; }
+
+.booking-card__main h3 {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2C1810;
+  margin: 0 0 0.25rem;
+}
+
+.booking-card__svc, .booking-card__when, .booking-card__who {
+  font-size: 0.82rem;
+  color: #888;
+  margin: 0.15rem 0 0;
+}
+
+.booking-card__price {
+  font-weight: 800;
+  color: #4F3942;
+  flex-shrink: 0;
+}
+
+.booking-status {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #aaa;
+}
+
+.btn-outline.danger { color: #c0565b; border-color: #f0c4c4; flex-shrink: 0; }
+
+.spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Wallet ── */
 .wallet-hero {
