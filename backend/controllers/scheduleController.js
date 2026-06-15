@@ -13,7 +13,8 @@ const {
   resetCollaboratorWeekly,
   computeAvailableSlots,
   computeBookingWeek,
-  buildCalendarEvents
+  buildCalendarEvents,
+  computeCalendarDisplayBounds
 } = require('../utils/scheduleHelpers')
 
 async function assertCollaborator (proId, collaboratorId) {
@@ -234,7 +235,12 @@ exports.getCalendar = async (req, res) => {
       toStr          : to
     })
 
-    res.json({ data: events })
+    const bounds = await computeCalendarDisplayBounds(
+      req.userId,
+      collaboratorId || null
+    )
+
+    res.json({ data: events, bounds })
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
   }

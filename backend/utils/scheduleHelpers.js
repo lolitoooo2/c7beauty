@@ -4,8 +4,11 @@ const ScheduleException = require('../models/ScheduleException')
 const ServiceConstraint = require('../models/ServiceConstraint')
 const Service           = require('../models/Service')
 const Collaborator      = require('../models/Collaborator')
+const Booking           = require('../models/Booking')
+const { getBusyRanges, getOccupiedSlotStarts, isSlotBlockedByRanges } = require('./bookingHelpers')
+const { dateAtTimeInParis } = require('./timezoneHelpers')
 
-const BUFFER_MINUTES     = 5
+const BUFFER_MINUTES     = 0
 const MIN_ADVANCE_HOURS  = 2
 const SLOT_STEP_MINUTES  = 15 // pas minimum pour prestations courtes
 
@@ -83,16 +86,8 @@ function minutesToTime (mins) {
 }
 
 function dateAtTime (dateOnly, time) {
-  const base = parseDateOnly(dateOnly)
-  const mins = parseTimeToMinutes(time)
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return new Date(Date.UTC(
-    base.getUTCFullYear(),
-    base.getUTCMonth(),
-    base.getUTCDate(),
-    h, m, 0, 0
-  ))
+  const dateStr = typeof dateOnly === 'string' ? dateOnly.slice(0, 10) : formatDateOnly(dateOnly)
+  return dateAtTimeInParis(dateStr, time)
 }
 
 function rangesOverlap (aStart, aEnd, bStart, bEnd) {
@@ -334,7 +329,8 @@ async function computeAvailableSlots ({
   collaboratorId,
   serviceId,
   dateStr,
-  now = new Date()
+  now = new Date(),
+  includeUnavailable = false
 }) {
   const service = await Service.findOne({ _id: serviceId, proId, active: true })
   if (!service) return { slots: [], message: 'Prestation introuvable ou inactive.' }
@@ -367,28 +363,50 @@ async function computeAvailableSlots ({
   const slotStep        = getSlotStepMinutes(serviceDuration)
   const minStart = new Date(now.getTime() + MIN_ADVANCE_HOURS * 60 * 60 * 1000)
   const dayConstraints = await getConstraintsForDate(proId, collaboratorId, dateStr)
+  const dayStart       = dateAtTime(dateStr, '00:00')
+  const dayEnd         = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+  const busyRanges     = await getBusyRanges({
+    proId,
+    collaboratorId,
+    rangeStart : dayStart,
+    rangeEnd   : dayEnd
+  })
+  const occupiedStarts = await getOccupiedSlotStarts({
+    proId,
+    collaboratorId,
+    rangeStart : dayStart,
+    rangeEnd   : dayEnd
+  })
   const slots    = []
 
   for (const range of daySchedule.slots) {
     const startMin = parseTimeToMinutes(range.start)
     const endMin   = parseTimeToMinutes(range.end)
 
-    // Dernier créneau = dernière heure où la prestation se termine à la fermeture (sans buffer après)
-    // Le buffer s'appliquera entre RDV quand le Sprint 3 gérera les réservations existantes.
+    // Dernier créneau = dernière heure où la prestation se termine à la fermeture.
+    // Les chevauchements RDV/holds sont exclus via busyRanges (durée exacte, sans buffer).
     for (let t = startMin; t + serviceDuration <= endMin; t += slotStep) {
       const activeConstraints = getConstraintsActiveAtTime(dayConstraints, date, t, t + serviceDuration)
       if (!isServiceAllowedByConstraints(activeConstraints, serviceId)) continue
 
       const slotStart = dateAtTime(dateStr, minutesToTime(t))
       const slotEnd   = new Date(slotStart.getTime() + service.duration * 60 * 1000)
+      const startTime = minutesToTime(t)
 
-      if (slotStart < minStart) continue
+      let available = true
+      if (slotStart < minStart) available = false
+      else if (isSlotBlockedByRanges(slotStart, slotEnd, busyRanges)) available = false
+
+      const occupied = occupiedStarts.has(startTime)
+
+      if (!available && !includeUnavailable) continue
 
       slots.push({
         start    : slotStart.toISOString(),
         end      : slotEnd.toISOString(),
-        startTime: minutesToTime(t),
-        endTime  : minutesToTime(t + serviceDuration)
+        startTime,
+        endTime  : minutesToTime(t + serviceDuration),
+        ...(includeUnavailable ? { available, occupied } : {})
       })
     }
   }
@@ -452,11 +470,12 @@ async function computeBookingWeek ({
   }
 
   const dayResults = []
+  const perDayData = []
   const cursor = new Date(from)
 
   for (let i = 0; i < days; i++) {
-    const dateStr = formatDateOnly(cursor)
-    const slotMap = new Map() // time -> Set of collaboratorIds
+    const dateStr  = formatDateOnly(cursor)
+    const perCollab = {}
 
     for (const collab of collaborators) {
       const result = await computeAvailableSlots({
@@ -464,38 +483,72 @@ async function computeBookingWeek ({
         collaboratorId : collab._id,
         serviceId,
         dateStr,
-        now
+        now,
+        includeUnavailable: true
       })
-
-      for (const slot of result.slots) {
-        const time = slot.startTime
-        if (!slotMap.has(time)) slotMap.set(time, new Set())
-        slotMap.get(time).add(String(collab._id))
-      }
+      perCollab[String(collab._id)] = result.slots
     }
 
-    const times = Array.from(slotMap.keys()).sort((a, b) =>
-      parseTimeToMinutes(a) - parseTimeToMinutes(b)
-    )
-
-    const byCollaborator = {}
-    for (const collab of collaborators) {
-      byCollaborator[String(collab._id)] = times.filter(t =>
-        slotMap.get(t)?.has(String(collab._id))
-      )
-    }
-
-    dayResults.push({
-      date           : dateStr,
-      label          : formatDayLabel(dateStr),
-      slots          : times.map(time => ({
-        time,
-        collaboratorIds: Array.from(slotMap.get(time) || [])
-      })),
-      byCollaborator
+    perDayData.push({
+      dateStr,
+      label: formatDayLabel(dateStr),
+      perCollab
     })
 
     cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  const weekTimesSet = new Set()
+  for (const day of perDayData) {
+    for (const slots of Object.values(day.perCollab)) {
+      for (const slot of slots) weekTimesSet.add(slot.startTime)
+    }
+  }
+  const weekTimes = Array.from(weekTimesSet).sort(
+    (a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b)
+  )
+
+  const collaboratorIds = collaborators.map(c => String(c._id))
+
+  for (const { dateStr, label, perCollab } of perDayData) {
+    const byCollaborator = {}
+    for (const cid of collaboratorIds) {
+      byCollaborator[cid] = weekTimes.map(time => {
+        const slot = perCollab[cid]?.find(s => s.startTime === time)
+        return {
+          time,
+          available  : slot?.available ?? false,
+          inSchedule : !!slot,
+          occupied   : slot?.occupied ?? false
+        }
+      })
+    }
+
+    dayResults.push({
+      date: dateStr,
+      label,
+      slots: weekTimes.map(time => {
+        const availableCollabs = collaboratorIds.filter(cid => {
+          const s = perCollab[cid]?.find(x => x.startTime === time)
+          return s?.available
+        })
+        const inSchedule = collaboratorIds.some(cid =>
+          perCollab[cid]?.some(s => s.startTime === time)
+        )
+        const occupied = availableCollabs.length === 0 && collaboratorIds.some(cid => {
+          const s = perCollab[cid]?.find(x => x.startTime === time)
+          return s?.occupied
+        })
+        return {
+          time,
+          available: availableCollabs.length > 0,
+          inSchedule,
+          occupied,
+          collaboratorIds: availableCollabs
+        }
+      }),
+      byCollaborator
+    })
   }
 
   return {
@@ -514,6 +567,7 @@ async function computeBookingWeek ({
     })),
     from     : fromStr,
     daysCount: days,
+    weekTimes,
     days     : dayResults,
     error    : null
   }
@@ -549,11 +603,12 @@ async function buildCalendarEvents ({ proId, collaboratorId, fromStr, toStr }) {
     } else {
       for (const slot of schedule.slots) {
         events.push({
-          id    : `open-${dateStr}-${slot.start}`,
-          title : schedule.label || 'Ouvert',
-          start : `${dateStr}T${slot.start}:00`,
-          end   : `${dateStr}T${slot.end}:00`,
-          color : '#EADAF3',
+          id      : `open-${dateStr}-${slot.start}`,
+          title   : '',
+          start   : `${dateStr}T${slot.start}:00`,
+          end     : `${dateStr}T${slot.end}:00`,
+          display : 'background',
+          color   : '#EADAF3',
           extendedProps: { type: 'open' }
         })
       }
@@ -613,7 +668,92 @@ async function buildCalendarEvents ({ proId, collaboratorId, fromStr, toStr }) {
     }
   }
 
+  const bookingFilter = {
+    proId,
+    status : 'confirmed',
+    start  : { $lt: new Date(to.getTime() + 86400000) },
+    end    : { $gt: from }
+  }
+  if (collaboratorId) bookingFilter.collaboratorId = collaboratorId
+
+  const bookings = await Booking.find(bookingFilter)
+    .populate('clientId', 'firstName lastName phone')
+    .populate('serviceId', 'name')
+    .lean()
+
+  const { formatTimeInParis } = require('./timezoneHelpers')
+
+  for (const b of bookings) {
+    const clientName = b.clientId
+      ? `${b.clientId.firstName} ${b.clientId.lastName}`.trim()
+      : 'Client'
+    const svcName = b.serviceName || b.serviceId?.name || 'RDV'
+    const timeLabel = formatTimeInParis(b.start)
+    const endLabel  = formatTimeInParis(b.end)
+    events.push({
+      id              : `booking-${b._id}`,
+      title           : `${timeLabel} · ${svcName}`,
+      start           : b.start.toISOString(),
+      end             : b.end.toISOString(),
+      color           : '#4F3942',
+      displayEventTime: false,
+      classNames      : ['fc-event--booking'],
+      extendedProps   : {
+        type        : 'booking',
+        bookingId   : String(b._id),
+        serviceName : svcName,
+        clientName,
+        clientPhone : b.clientId?.phone || '',
+        duration    : b.duration,
+        price       : b.price,
+        timeLabel,
+        endLabel
+      }
+    })
+  }
+
   return events
+}
+
+/**
+ * Plage horaire affichée dans le calendrier pro (horaires salon ± 30 min).
+ */
+async function computeCalendarDisplayBounds (proId, collaboratorId = null) {
+  let days
+
+  if (collaboratorId) {
+    const collabSchedule = await WeeklySchedule.findOne({ proId, collaboratorId }).lean()
+    days = collabSchedule?.days?.length
+      ? collabSchedule.days
+      : (await getOrCreateSalonSchedule(proId)).days
+  } else {
+    days = (await getOrCreateSalonSchedule(proId)).days
+  }
+
+  let minMin = Infinity
+  let maxMin = 0
+
+  for (const day of days || []) {
+    if (!day.isOpen) continue
+    for (const slot of day.slots || []) {
+      const s = parseTimeToMinutes(slot.start)
+      const e = parseTimeToMinutes(slot.end)
+      if (s < minMin) minMin = s
+      if (e > maxMin) maxMin = e
+    }
+  }
+
+  if (!isFinite(minMin) || maxMin === 0) {
+    return { slotMinTime: '09:00:00', slotMaxTime: '19:00:00' }
+  }
+
+  minMin = Math.max(0, minMin - 30)
+  maxMin = Math.min(24 * 60, maxMin + 30)
+
+  return {
+    slotMinTime: `${minutesToTime(minMin)}:00`,
+    slotMaxTime: `${minutesToTime(maxMin)}:00`
+  }
 }
 
 module.exports = {
@@ -627,6 +767,8 @@ module.exports = {
   parseDateOnly,
   formatDateOnly,
   formatDayLabel,
+  dateAtTime,
+  minutesToTime,
   getOrCreateWeeklySchedule,
   getOrCreateSalonSchedule,
   getWeeklyForEditor,
@@ -637,5 +779,6 @@ module.exports = {
   getCollaboratorsForService,
   computeAvailableSlots,
   computeBookingWeek,
-  buildCalendarEvents
+  buildCalendarEvents,
+  computeCalendarDisplayBounds
 }
