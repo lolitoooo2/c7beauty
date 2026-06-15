@@ -195,7 +195,11 @@ exports.getClient = async (req, res) => {
 // ── POST /api/admin/clients ───────────────────────────
 exports.createClient = async (req, res) => {
   try {
-    const client = await Client.create({ ...req.body, myReferralCode: 'C7-' + Math.random().toString(36).substring(2,8).toUpperCase() })
+    const client = await Client.create({
+      ...req.body,
+      myReferralCode : 'C7-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+      emailVerified  : true
+    })
     res.status(201).json({ message: 'Client créé.', data: client })
   } catch (err) {
     if (err.code === 11000) return res.status(409).json({ message: 'Email déjà utilisé.' })
@@ -237,4 +241,66 @@ exports.getDoc = (req, res) => {
   const filePath = path.join(__dirname, '../uploads/kyc', filename)
   if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'Document introuvable.' })
   res.sendFile(filePath)
+}
+
+// ── GET /api/admin/emails ─────────────────────────────
+exports.getEmailLogs = async (req, res) => {
+  try {
+    const EmailLog = require('../models/EmailLog')
+    const page  = Number(req.query.page) || 1
+    const limit = Number(req.query.limit) || 30
+    const filter = {}
+    if (req.query.type) filter.type = req.query.type
+    if (req.query.status) filter.status = req.query.status
+
+    const total = await EmailLog.countDocuments(filter)
+    const data  = await EmailLog.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean()
+
+    res.json({ data, total, page, pages: Math.ceil(total / limit) })
+  } catch (err) {
+    console.error('[admin.getEmailLogs]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── PATCH /api/admin/clients/:id/verify-email ─────────
+exports.verifyClientEmail = async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id)
+    if (!client) return res.status(404).json({ message: 'Client introuvable.' })
+
+    client.emailVerified              = true
+    client.emailVerificationToken   = null
+    client.emailVerificationExpires = null
+    await client.save()
+
+    res.json({ message: 'Email marqué comme vérifié.', data: client })
+  } catch (err) {
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── POST /api/admin/clients/:id/resend-verification ───
+exports.resendClientVerification = async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.id)
+      .select('+emailVerificationToken +emailVerificationExpires')
+    if (!client) return res.status(404).json({ message: 'Client introuvable.' })
+    if (client.emailVerified) {
+      return res.status(400).json({ message: 'Email déjà vérifié.' })
+    }
+
+    const { assignVerificationToken, sendClientVerificationEmail } = require('../utils/verificationHelpers')
+    await assignVerificationToken(client)
+    await sendClientVerificationEmail(client)
+
+    res.json({ message: 'Email de vérification renvoyé.' })
+  } catch (err) {
+    console.error('[admin.resendClientVerification]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
 }

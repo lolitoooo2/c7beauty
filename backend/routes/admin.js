@@ -25,6 +25,10 @@ router.get('/clients/:id',        c.getClient)
 router.post('/clients',           c.createClient)
 router.put('/clients/:id',        c.updateClient)
 router.delete('/clients/:id',     c.deleteClient)
+router.patch('/clients/:id/verify-email', c.verifyClientEmail)
+router.post('/clients/:id/resend-verification', c.resendClientVerification)
+
+router.get('/emails',             c.getEmailLogs)
 
 // Documents KYC (accès sécurisé admin uniquement)
 router.get('/docs/:filename',     c.getDoc)

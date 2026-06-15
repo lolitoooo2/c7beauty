@@ -254,11 +254,11 @@
         <div class="table-wrap">
           <table class="admin-table">
             <thead>
-              <tr><th>Client</th><th>Téléphone</th><th>CP</th><th>Cashback</th><th>Points</th><th>Parrain</th><th>Date</th><th>Actions</th></tr>
+              <tr><th>Client</th><th>Téléphone</th><th>CP</th><th>Email</th><th>Cashback</th><th>Points</th><th>Parrain</th><th>Date</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              <tr v-if="clients.loading"><td colspan="8" class="loading-row"><div class="spinner-sm"></div> Chargement…</td></tr>
-              <tr v-else-if="!clients.list.length"><td colspan="8" class="empty-row">Aucun client trouvé.</td></tr>
+              <tr v-if="clients.loading"><td colspan="9" class="loading-row"><div class="spinner-sm"></div> Chargement…</td></tr>
+              <tr v-else-if="!clients.list.length"><td colspan="9" class="empty-row">Aucun client trouvé.</td></tr>
               <tr v-for="c in clients.list" :key="c._id">
                 <td>
                   <div class="cell-user">
@@ -274,12 +274,19 @@
                   <code v-if="c.postalCode">{{ c.postalCode }}</code>
                   <span v-else class="no-doc">—</span>
                 </td>
+                <td>
+                  <span class="email-badge" :class="c.emailVerified ? 'ok' : 'pending'">
+                    {{ c.emailVerified ? 'Vérifié' : 'En attente' }}
+                  </span>
+                </td>
                 <td>{{ (c.wallet?.cashback ?? 0).toFixed(2) }} €</td>
                 <td>{{ c.wallet?.points ?? 0 }}</td>
                 <td><code v-if="c.myReferralCode">{{ c.myReferralCode }}</code><span v-else>—</span></td>
                 <td>{{ formatDate(c.createdAt) }}</td>
                 <td>
                   <div class="action-btns">
+                    <button v-if="!c.emailVerified" class="btn-icon" title="Forcer vérification" @click="forceVerifyClient(c._id)"><Check :size="15" /></button>
+                    <button v-if="!c.emailVerified" class="btn-icon" title="Renvoyer email" @click="resendClientVerify(c._id)"><Mail :size="15" /></button>
                     <button class="btn-icon" title="Modifier" @click="openEditModal('client', c)"><Pencil :size="15" /></button>
                     <button class="btn-icon danger" title="Supprimer" @click="confirmDelete('client', c._id)"><Trash2 :size="15" /></button>
                   </div>
@@ -289,6 +296,46 @@
           </table>
         </div>
         <Pagination :page="clients.page" :pages="clients.pages" @change="p => { clients.page = p; fetchClientsList() }" />
+      </section>
+
+      <!-- ── EMAILS ─────────────────────────────────── -->
+      <section v-else-if="section === 'emails'" class="section-content">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <select v-model="emails.statusFilter" class="filter-select" @change="fetchEmailLogs">
+              <option value="">Tous statuts</option>
+              <option value="sent">Envoyés</option>
+              <option value="failed">Échecs</option>
+              <option value="skipped">Ignorés</option>
+            </select>
+            <select v-model="emails.typeFilter" class="filter-select" @change="fetchEmailLogs">
+              <option value="">Tous types</option>
+              <option value="email_verification">Vérification email</option>
+              <option value="booking_confirmation">Confirmation RDV</option>
+            </select>
+          </div>
+          <span class="total-label">{{ emails.total }} email(s)</span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr><th>Date</th><th>Destinataire</th><th>Type</th><th>Sujet</th><th>Statut</th><th>Erreur</th></tr>
+            </thead>
+            <tbody>
+              <tr v-if="emails.loading"><td colspan="6" class="loading-row"><div class="spinner-sm"></div> Chargement…</td></tr>
+              <tr v-else-if="!emails.list.length"><td colspan="6" class="empty-row">Aucun email enregistré.</td></tr>
+              <tr v-for="e in emails.list" :key="e._id">
+                <td>{{ formatDate(e.createdAt) }}</td>
+                <td>{{ e.to }}</td>
+                <td><code>{{ e.type }}</code></td>
+                <td>{{ e.subject }}</td>
+                <td><span class="email-badge" :class="e.status">{{ e.status }}</span></td>
+                <td class="cell-sub">{{ e.error || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <Pagination :page="emails.page" :pages="emails.pages" @change="p => { emails.page = p; fetchEmailLogs() }" />
       </section>
 
       <!-- ── CATÉGORIES ──────────────────────────────── -->
@@ -501,12 +548,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, defineComponent, h } from 'vue'
+import { ref, reactive, computed, onMounted, watch, defineComponent, h } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   LayoutDashboard, Users, Scissors, FileCheck, Search,
   LogOut, PanelLeftClose, PanelLeftOpen, Clock, CheckCircle,
-  UserPlus, Pencil, Trash2, FileText, Check, X, Plus, Loader2, Tag
+  UserPlus, Pencil, Trash2, FileText, Check, X, Plus, Loader2, Tag, Mail
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -517,13 +564,14 @@ const toast     = useToast()
 
 // ── Sidebar ──────────────────────────────────────────
 const sidebarClosed = ref(false)
-const section = ref<'dashboard' | 'kyc' | 'pros' | 'clients' | 'categories'>('dashboard')
+const section = ref<'dashboard' | 'kyc' | 'pros' | 'clients' | 'categories' | 'emails'>('dashboard')
 
 const navItems = [
   { key: 'dashboard',  label: 'Tableau de bord', icon: LayoutDashboard },
   { key: 'kyc',        label: 'Demandes KYC',    icon: FileCheck, badge: 'pending' },
   { key: 'pros',       label: 'Professionnels',  icon: Scissors },
   { key: 'clients',    label: 'Clients',         icon: Users },
+  { key: 'emails',     label: 'Emails',          icon: Mail },
   { key: 'categories', label: 'Catégories',      icon: Tag }
 ] as const
 
@@ -605,6 +653,45 @@ async function fetchClientsList () {
 let proTimer = 0, clientTimer = 0
 function debounceFetchPros () { clearTimeout(proTimer); proTimer = setTimeout(fetchProsList, 300) }
 function debounceFetchClients () { clearTimeout(clientTimer); clientTimer = setTimeout(fetchClientsList, 300) }
+
+async function forceVerifyClient (id: string) {
+  try {
+    await api(`/api/admin/clients/${id}/verify-email`, { method: 'PATCH' })
+    toast.success('Email marqué comme vérifié.')
+    fetchClientsList()
+  } catch (err: any) { toast.error(err.message) }
+}
+
+async function resendClientVerify (id: string) {
+  try {
+    await api(`/api/admin/clients/${id}/resend-verification`, { method: 'POST' })
+    toast.success('Email de vérification renvoyé.')
+  } catch (err: any) { toast.error(err.message) }
+}
+
+// ── Email logs ────────────────────────────────────────
+const emails = reactive({
+  list: [] as any[],
+  total: 0,
+  page: 1,
+  pages: 1,
+  loading: false,
+  statusFilter: '',
+  typeFilter: ''
+})
+
+async function fetchEmailLogs () {
+  emails.loading = true
+  try {
+    const p = new URLSearchParams({ page: String(emails.page), limit: '30' })
+    if (emails.statusFilter) p.set('status', emails.statusFilter)
+    if (emails.typeFilter) p.set('type', emails.typeFilter)
+    const d = await api(`/api/admin/emails?${p}`)
+    emails.list = d.data
+    emails.total = d.total
+    emails.pages = d.pages
+  } finally { emails.loading = false }
+}
 
 // ── KYC actions ──────────────────────────────────────
 async function setKycStatus (id: string, status: string, rejectReason?: string) {
@@ -861,6 +948,10 @@ async function deleteSubcat (catId: string, subId: string) {
 // ── Init ──────────────────────────────────────────────
 onMounted(() => {
   fetchStats(); fetchKycList(); fetchProsList(); fetchClientsList(); fetchCats()
+})
+
+watch(section, (s) => {
+  if (s === 'emails') fetchEmailLogs()
 })
 
 // ── Pagination component ──────────────────────────────
@@ -1303,6 +1394,18 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 }
 .cat-status.active   { background: #d4f5e0; color: #1a7a40; }
 .cat-status.inactive { background: #fdecea; color: #c0565b; }
+
+.email-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+.email-badge.ok, .email-badge.sent { background: #d4f5e0; color: #1a7a40; }
+.email-badge.pending { background: #fff3cd; color: #856404; }
+.email-badge.failed { background: #fdecea; color: #c0565b; }
+.email-badge.skipped { background: #eee; color: #666; }
 .cat-card__actions { margin-left: auto; display: flex; gap: 0.35rem; }
 
 .subcats { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
