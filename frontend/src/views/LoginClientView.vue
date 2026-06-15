@@ -77,7 +77,7 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -102,6 +102,7 @@ const errors = reactive<Record<string, string>>({})
 
 const authStore = useAuthStore()
 const router    = useRouter()
+const route     = useRoute()
 const toast     = useToast()
 
 function validate() {
@@ -123,7 +124,8 @@ async function handleSubmit() {
       return
     }
     toast.success(`Bon retour ${authStore.user?.firstName} ! 👋`)
-    router.push('/espace-client')
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+    router.push(redirect && redirect.startsWith('/') ? redirect : '/espace-client')
   } catch (err: unknown) {
     apiError.value = err instanceof Error ? err.message : 'Identifiants incorrects'
   } finally {

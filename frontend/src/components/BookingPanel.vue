@@ -65,45 +65,141 @@
           </div>
         </div>
 
-        <div v-if="loading" class="bk-loading">
-          <Loader2 :size="22" class="spin" /> Chargement des disponibilités…
-        </div>
+        <div class="bk-layout">
+          <!-- Calendrier -->
+          <div class="bk-layout__calendar">
+            <div v-if="loading" class="bk-loading">
+              <Loader2 :size="22" class="spin" /> Chargement des disponibilités…
+            </div>
 
-        <div v-else-if="error" class="bk-empty">{{ error }}</div>
+            <div v-else-if="error" class="bk-empty">{{ error }}</div>
 
-        <div v-else class="bk-grid-wrap">
-          <div class="bk-grid">
-            <div v-for="day in displayDays" :key="day.date" class="bk-day-col">
-              <p class="bk-day-label">{{ shortDayLabel(day) }}</p>
-              <div class="bk-slots">
-                <button
-                  v-for="slot in slotsForDay(day)"
-                  :key="`${day.date}-${slot.time}`"
-                  type="button"
-                  class="bk-slot"
-                  :class="{ selected: selectedSlot?.date === day.date && selectedSlot?.time === slot.time }"
-                  @click="pickSlot(day.date, slot)"
-                >
-                  {{ slot.time }}
-                </button>
-                <p v-if="!slotsForDay(day).length" class="bk-no-slots">—</p>
+            <div v-else class="bk-grid-wrap">
+              <div class="bk-grid">
+                <div v-for="day in displayDays" :key="day.date" class="bk-day-col">
+                  <p class="bk-day-label">{{ shortDayLabel(day) }}</p>
+                  <div class="bk-slots">
+                    <template
+                      v-for="slot in slotsForDay(day)"
+                      :key="`${day.date}-${slot.time}`"
+                    >
+                      <span
+                        v-if="!slot.inSchedule"
+                        class="bk-slot bk-slot--gap"
+                        aria-hidden="true"
+                      >&nbsp;</span>
+                      <button
+                        v-else-if="slot.available"
+                        type="button"
+                        class="bk-slot"
+                        :class="{ selected: selectedSlot?.date === day.date && selectedSlot?.time === slot.time }"
+                        @click="pickSlot(day.date, slot)"
+                      >
+                        {{ slot.time }}
+                      </button>
+                      <span
+                        v-else-if="slot.occupied"
+                        class="bk-slot bk-slot--disabled"
+                        title="Créneau réservé"
+                      >
+                        {{ slot.time }}
+                      </span>
+                      <span
+                        v-else
+                        class="bk-slot bk-slot--blocked"
+                        title="Créneau indisponible"
+                      >
+                        {{ slot.time }}
+                      </span>
+                    </template>
+                    <p v-if="!slotsForDay(day).some(s => s.inSchedule)" class="bk-no-slots">—</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <p v-if="selectedSlot" class="bk-selected-hint">
-          Créneau sélectionné : {{ selectedSlotLabel }}
-        </p>
+          <!-- Récap — colonne droite sticky sur desktop, au-dessus sur mobile -->
+          <aside
+            ref="summaryEl"
+            class="bk-summary"
+            :class="{ 'bk-summary--active': selectedSlot || confirmed, 'bk-summary--done': confirmed }"
+          >
+            <template v-if="confirmed">
+              <p class="bk-summary__label">Confirmé</p>
+              <CheckCircle :size="28" class="bk-summary__icon-ok" />
+              <p class="bk-summary__title">Rendez-vous confirmé !</p>
+              <p class="bk-summary__detail">{{ selectedSlotLabel || 'Votre créneau est enregistré.' }}</p>
+              <router-link to="/espace-client" class="bk-confirm-btn bk-confirm-btn--link">
+                Voir mes réservations →
+              </router-link>
+            </template>
+
+            <template v-else-if="selectedSlot">
+              <p class="bk-summary__label">Votre créneau</p>
+              <p class="bk-summary__title">{{ selectedSlotLabel }}</p>
+              <p v-if="assignedCollabName" class="bk-summary__detail">
+                avec <strong>{{ assignedCollabName }}</strong>
+              </p>
+              <p v-else-if="selectedCollabId === ANY_COLLAB" class="bk-summary__detail">
+                Premier collaborateur disponible
+              </p>
+              <div class="bk-summary__price">
+                {{ service.name }} · {{ service.price.toFixed(2) }} €
+              </div>
+              <button
+                type="button"
+                class="bk-confirm-btn"
+                :disabled="confirming"
+                @click="confirmBooking"
+              >
+                <Loader2 v-if="confirming" :size="16" class="spin" />
+                {{ authStore.isClient ? 'Confirmer le rendez-vous' : 'Se connecter pour confirmer' }}
+              </button>
+              <p v-if="confirmError" class="bk-confirm-error">{{ confirmError }}</p>
+            </template>
+
+            <template v-else>
+              <p class="bk-summary__label">Récapitulatif</p>
+              <p class="bk-summary__placeholder">
+                Sélectionnez un créneau dans le calendrier pour confirmer votre rendez-vous.
+              </p>
+            </template>
+          </aside>
+        </div>
       </div>
     </section>
+
+    <!-- Barre fixe mobile quand créneau sélectionné -->
+    <Teleport to="body">
+      <div
+        v-if="selectedSlot && !confirmed"
+        class="bk-mobile-bar"
+      >
+        <div class="bk-mobile-bar__info">
+          <span class="bk-mobile-bar__time">{{ selectedSlotLabel }}</span>
+          <span v-if="assignedCollabName" class="bk-mobile-bar__who">{{ assignedCollabName }}</span>
+        </div>
+        <button
+          type="button"
+          class="bk-mobile-bar__btn"
+          :disabled="confirming"
+          @click="confirmBooking"
+        >
+          <Loader2 v-if="confirming" :size="15" class="spin" />
+          {{ authStore.isClient ? 'Confirmer' : 'Connexion' }}
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { ChevronLeft, ChevronRight, CalendarDays, Loader2, Clock } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { ChevronLeft, ChevronRight, CalendarDays, Loader2, Clock, CheckCircle } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
 
 interface Service {
   _id: string
@@ -123,14 +219,17 @@ interface Collaborator {
 
 interface DaySlot {
   time: string
-  collaboratorIds: string[]
+  available: boolean
+  inSchedule: boolean
+  occupied?: boolean
+  collaboratorIds?: string[]
 }
 
 interface DayData {
   date: string
   label: string
   slots: DaySlot[]
-  byCollaborator: Record<string, string[]>
+  byCollaborator: Record<string, DaySlot[]>
 }
 
 const props = defineProps<{
@@ -141,7 +240,9 @@ const props = defineProps<{
 
 defineEmits<{ close: [] }>()
 
-const toast = useToast()
+const toast     = useToast()
+const authStore = useAuthStore()
+const router    = useRouter()
 const ANY_COLLAB = ''
 
 const selectedCollabId = ref('')
@@ -150,6 +251,14 @@ const loading          = ref(false)
 const error            = ref('')
 const days             = ref<DayData[]>([])
 const selectedSlot     = ref<{ date: string; time: string; collaboratorIds: string[] } | null>(null)
+const holdId           = ref<string | null>(null)
+const assignedCollabId = ref<string | null>(null)
+const confirming       = ref(false)
+const confirmError     = ref('')
+const confirmed        = ref(false)
+const summaryEl        = ref<HTMLElement | null>(null)
+
+const HOLD_STORAGE_KEY = 'c7_booking_hold'
 
 const eligibleCollaborators = computed(() =>
   props.collaborators.filter(c =>
@@ -162,11 +271,14 @@ const displayDays = computed(() => days.value.slice(0, 7))
 const selectedSlotLabel = computed(() => {
   if (!selectedSlot.value) return ''
   const day = days.value.find(d => d.date === selectedSlot.value!.date)
-  const collabName = selectedCollabId.value
-    ? eligibleCollaborators.value.find(c => c._id === selectedCollabId.value)
-    : null
-  const name = collabName ? collabName.firstName : 'Sans préférence'
-  return `${day?.label || selectedSlot.value.date} à ${selectedSlot.value.time} avec ${name}`
+  return `${day?.label || selectedSlot.value.date} à ${selectedSlot.value.time}`
+})
+
+const assignedCollabName = computed(() => {
+  const id = assignedCollabId.value || selectedCollabId.value
+  if (!id) return null
+  const c = eligibleCollaborators.value.find(x => x._id === id)
+  return c ? `${c.firstName} ${c.lastName}` : null
 })
 
 function todayStr () {
@@ -192,8 +304,7 @@ function shortDayLabel (day: DayData) {
 
 function slotsForDay (day: DayData) {
   if (selectedCollabId.value) {
-    const times = day.byCollaborator[selectedCollabId.value] || []
-    return times.map(time => ({ time, collaboratorIds: [selectedCollabId.value] }))
+    return day.byCollaborator[selectedCollabId.value] || []
   }
   return day.slots
 }
@@ -227,7 +338,7 @@ async function fetchWeek () {
     }
     days.value = data.days || []
     const hasSlots = days.value.some(d =>
-      d.slots?.length || Object.values(d.byCollaborator || {}).some(a => a.length)
+      d.slots?.some((s: DaySlot) => s.available)
     )
     if (!hasSlots) error.value = 'Aucun créneau disponible sur cette période.'
   } catch {
@@ -239,8 +350,114 @@ async function fetchWeek () {
 }
 
 function pickSlot (date: string, slot: DaySlot) {
-  selectedSlot.value = { date, time: slot.time, collaboratorIds: slot.collaboratorIds }
-  toast.info('La confirmation de RDV arrive au prochain sprint — créneau enregistré localement.')
+  if (!slot.available) return
+  const collaboratorIds = slot.collaboratorIds?.length
+    ? slot.collaboratorIds
+    : selectedCollabId.value
+      ? [selectedCollabId.value]
+      : []
+  selectedSlot.value = { date, time: slot.time, collaboratorIds }
+  holdId.value = null
+  assignedCollabId.value = null
+  confirmError.value = ''
+  confirmed.value = false
+  requestAnimationFrame(() => {
+    summaryEl.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+}
+
+async function createHold () {
+  if (!selectedSlot.value) return null
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+
+  const body: Record<string, unknown> = {
+    proId     : props.proId,
+    serviceId : props.service._id,
+    date      : selectedSlot.value.date,
+    startTime : selectedSlot.value.time,
+    collaboratorIds : selectedSlot.value.collaboratorIds
+  }
+  if (selectedCollabId.value) body.collaboratorId = selectedCollabId.value
+
+  const res  = await fetch('/api/bookings/hold', { method: 'POST', headers, body: JSON.stringify(body) })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.message || 'Créneau indisponible.')
+
+  holdId.value = data.holdId
+  assignedCollabId.value = data.collaboratorId
+  sessionStorage.setItem(HOLD_STORAGE_KEY, data.holdId)
+  return data.holdId as string
+}
+
+async function confirmBooking () {
+  if (!selectedSlot.value) return
+  confirmError.value = ''
+  confirming.value = true
+
+  try {
+    let currentHoldId = holdId.value
+    if (!currentHoldId) {
+      currentHoldId = await createHold()
+    }
+
+    if (!authStore.isClient) {
+      const returnUrl = router.currentRoute.value.fullPath
+      router.push({ path: '/login/client', query: { redirect: returnUrl } })
+      return
+    }
+
+    const res = await fetch('/api/bookings/confirm', {
+      method  : 'POST',
+      headers : {
+        'Content-Type' : 'application/json',
+        Authorization  : `Bearer ${authStore.token}`
+      },
+      body: JSON.stringify({ holdId: currentHoldId })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Confirmation impossible.')
+
+    sessionStorage.removeItem(HOLD_STORAGE_KEY)
+    confirmed.value = true
+    toast.success('Rendez-vous confirmé !')
+    fetchWeek()
+  } catch (err: unknown) {
+    confirmError.value = err instanceof Error ? err.message : 'Erreur'
+    holdId.value = null
+    sessionStorage.removeItem(HOLD_STORAGE_KEY)
+  } finally {
+    confirming.value = false
+  }
+}
+
+async function resumePendingHold () {
+  const stored = sessionStorage.getItem(HOLD_STORAGE_KEY)
+  if (!stored || !authStore.isClient) return
+  holdId.value = stored
+  confirming.value = true
+  try {
+    const res = await fetch('/api/bookings/confirm', {
+      method  : 'POST',
+      headers : {
+        'Content-Type' : 'application/json',
+        Authorization  : `Bearer ${authStore.token}`
+      },
+      body: JSON.stringify({ holdId: stored })
+    })
+    const data = await res.json()
+    if (res.ok) {
+      sessionStorage.removeItem(HOLD_STORAGE_KEY)
+      confirmed.value = true
+      toast.success('Rendez-vous confirmé !')
+    } else if (res.status === 410 || res.status === 409) {
+      sessionStorage.removeItem(HOLD_STORAGE_KEY)
+      holdId.value = null
+    }
+  } finally {
+    confirming.value = false
+  }
 }
 
 watch(selectedCollabId, () => fetchWeek())
@@ -248,6 +465,9 @@ watch(selectedCollabId, () => fetchWeek())
 onMounted(() => {
   selectedCollabId.value = ANY_COLLAB
   fetchWeek()
+  if (sessionStorage.getItem(HOLD_STORAGE_KEY) && authStore.isClient) {
+    resumePendingHold()
+  }
 })
 </script>
 
@@ -504,6 +724,94 @@ onMounted(() => {
   font-size: 0.88rem;
 }
 
+/* Layout calendrier + récap */
+.bk-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.bk-layout__calendar {
+  min-width: 0;
+}
+
+.bk-summary {
+  position: sticky;
+  top: 5.5rem;
+  background: #FDFBFA;
+  border: 1px solid #E4E0DC;
+  border-radius: 14px;
+  padding: 1.25rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.bk-summary--active {
+  border-color: #D1A1C7;
+  box-shadow: 0 4px 20px rgba(79, 57, 66, 0.08);
+}
+
+.bk-summary--done {
+  border-color: #4F3942;
+  background: #fff;
+  text-align: center;
+}
+
+.bk-summary__label {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #D1A1C7;
+  margin: 0 0 0.5rem;
+}
+
+.bk-summary__title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2C1810;
+  margin: 0 0 0.4rem;
+  line-height: 1.35;
+}
+
+.bk-summary__detail {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.bk-summary__price {
+  font-size: 0.82rem;
+  color: #888;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #F0EBE8;
+}
+
+.bk-summary__placeholder {
+  font-size: 0.85rem;
+  color: #aaa;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.bk-summary__icon-ok {
+  color: #4F3942;
+  margin: 0.25rem auto 0.75rem;
+  display: block;
+}
+
+.bk-confirm-btn--link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  margin-top: 0.5rem;
+}
+
 .bk-grid-wrap {
   overflow-x: auto;
   margin: 0 -0.25rem;
@@ -560,25 +868,155 @@ onMounted(() => {
   color: #fff;
 }
 
+.bk-slot--disabled {
+  display: block;
+  padding: 0.45rem 0.2rem;
+  border: 1px solid #F0EBE8;
+  border-radius: 8px;
+  background: #fff;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ccc;
+  text-align: center;
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.bk-slot--blocked {
+  display: block;
+  padding: 0.45rem 0.2rem;
+  border: 1px dashed #E4E0DC;
+  border-radius: 8px;
+  background: #FAFAFA;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #bbb;
+  text-align: center;
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.bk-slot--gap {
+  display: block;
+  padding: 0.45rem 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .bk-no-slots {
   font-size: 0.85rem;
   color: #ccc;
   margin: 0.5rem 0;
 }
 
-.bk-selected-hint {
-  margin: 1.25rem 0 0;
-  padding: 0.75rem 1rem;
-  background: #EADAF3;
-  border-radius: 10px;
+.bk-confirm-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem;
+  background: #4F3942;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
   font-family: "Montserrat", sans-serif;
-  font-size: 0.85rem;
-  color: #4F3942;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s;
+}
+.bk-confirm-btn:hover:not(:disabled) { background: #3a2830; }
+.bk-confirm-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+.bk-confirm-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: #c0565b;
+  text-align: center;
+}
+
+/* Barre fixe mobile */
+.bk-mobile-bar {
+  display: none;
 }
 
 .spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) {
+  .bk-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .bk-summary {
+    position: static;
+    order: -1;
+  }
+
+  .bk-mobile-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    background: #fff;
+    border-top: 1px solid #E4E0DC;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  .bk-mobile-bar__info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bk-mobile-bar__time {
+    display: block;
+    font-family: "Montserrat", sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #2C1810;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bk-mobile-bar__who {
+    display: block;
+    font-size: 0.72rem;
+    color: #888;
+  }
+
+  .bk-mobile-bar__btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.65rem 1.1rem;
+    background: #4F3942;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: "Montserrat", sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .booking-panel {
+    padding-bottom: 5rem;
+  }
+}
 
 @media (max-width: 640px) {
   .bk-grid { grid-template-columns: repeat(4, minmax(68px, 1fr)); }

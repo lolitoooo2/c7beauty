@@ -3,9 +3,9 @@
 
     <!-- Nav — identique à la fiche salon -->
     <nav class="salon-nav">
-      <router-link :to="`/salon/${proId}`" class="back-btn">
+      <button type="button" class="back-btn" @click="goBackToSalon">
         <ArrowLeft :size="18" /> Retour au salon
-      </router-link>
+      </button>
       <router-link to="/" class="salon-logo">
         <img src="@/assets/logo.svg" alt="C7'Beauty" />
       </router-link>
@@ -35,7 +35,7 @@
         :pro-id="proId"
         :service="service"
         :collaborators="collaborators"
-        @close="router.push(`/salon/${proId}`)"
+        @close="goBackToSalon"
       />
     </div>
   </div>
@@ -46,7 +46,7 @@
 
   <div v-else class="page-error">
     <p>Prestation ou salon introuvable.</p>
-    <router-link :to="`/salon/${proId}`">Retour au salon</router-link>
+    <button type="button" class="page-error__link" @click="goBackToSalon">Retour au salon</button>
   </div>
 </template>
 
@@ -78,6 +78,14 @@ const router = useRouter()
 
 const proId     = computed(() => String(route.params.id))
 const serviceId = computed(() => String(route.params.serviceId))
+
+function goBackToSalon () {
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.replace(`/salon/${proId.value}`)
+  }
+}
 
 const loading       = ref(true)
 const pro           = ref<any>(null)
@@ -152,7 +160,7 @@ onMounted(load)
 .salon-logo img { height: 30px; }
 
 .book-content {
-  max-width: 820px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 2rem 1.5rem 3rem;
 }
@@ -232,7 +240,17 @@ onMounted(load)
   background: #F8F5F2;
 }
 
-.page-error a { color: #4F3942; font-weight: 600; }
+.page-error a, .page-error__link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #4F3942;
+  font-weight: 600;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
 
 .spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
