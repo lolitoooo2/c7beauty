@@ -109,7 +109,18 @@
         </div>
 
         <h2 class="section-title">Prochaine réservation</h2>
-        <div class="empty-state">
+        <div v-if="proBookingLoading" class="svc-loading">
+          <Loader2 :size="20" class="spin" />
+        </div>
+        <div v-else-if="nextProBooking" class="booking-preview">
+          <p class="booking-preview__svc">{{ nextProBooking.serviceName }}</p>
+          <p class="booking-preview__when">{{ formatProBookingDate(nextProBooking.start) }}</p>
+          <p class="booking-preview__client">
+            {{ nextProBooking.client?.firstName }} {{ nextProBooking.client?.lastName }}
+            <span v-if="nextProBooking.client?.phone"> · {{ nextProBooking.client.phone }}</span>
+          </p>
+        </div>
+        <div v-else class="empty-state">
           <CalendarX :size="36" />
           <p>Aucune réservation à venir.</p>
           <p class="empty-hint">Les réservations de vos clients apparaîtront ici.</p>
@@ -117,7 +128,7 @@
       </section>
 
       <!-- ── Agenda ── -->
-      <section v-else-if="activeSection === 'agenda'" class="section-content section-content--wide">
+      <section v-else-if="activeSection === 'agenda'" class="section-content section-content--wide section-content--agenda">
         <div class="svc-header">
           <h1 class="page-title" style="margin:0">Mon agenda</h1>
           <select v-model="agendaCollaboratorId" class="agenda-select">
@@ -127,22 +138,118 @@
             </option>
           </select>
         </div>
-        <p class="page-sub">
-          Cliquez sur un jour pour le fermer ou ajouter une exception.
-          Sélectionnez un collaborateur puis glissez sur l'agenda pour limiter des prestations à une plage horaire (comme Planity).
+        <div class="agenda-toolbar">
+          <div class="agenda-view-tabs">
+            <button
+              type="button"
+              class="agenda-view-tab"
+              :class="{ active: agendaViewMode === 'day' }"
+              @click="agendaViewMode = 'day'"
+            >
+              <CalendarDays :size="16" /> Jour
+            </button>
+            <button
+              type="button"
+              class="agenda-view-tab"
+              :class="{ active: agendaViewMode === 'week' }"
+              @click="agendaViewMode = 'week'"
+            >
+              <CalendarCheck :size="16" /> Semaine
+            </button>
+            <button
+              type="button"
+              class="agenda-view-tab"
+              :class="{ active: agendaViewMode === 'list' }"
+              @click="agendaViewMode = 'list'"
+            >
+              <Clock :size="16" /> Liste
+            </button>
+          </div>
+        </div>
+
+        <p class="page-sub agenda-sub">
+          <template v-if="agendaViewMode === 'day'">
+            Vue jour — horaires du salon uniquement, sans scroll inutile. Cliquez sur un RDV pour le détail.
+          </template>
+          <template v-else-if="agendaViewMode === 'week'">
+            Vue semaine — même plage horaire que vos ouvertures. Onglet Liste pour tout voir d'un coup.
+          </template>
+          <template v-else>
+            Liste complète des rendez-vous de la période, triés par jour.
+          </template>
         </p>
+
         <div v-if="!agendaCollaboratorId" class="agenda-hint">
           Sélectionnez un collaborateur pour gérer ses contraintes prestations.
         </div>
+
         <AgendaCalendar
+          v-if="agendaViewMode === 'day'"
           ref="agendaCalRef"
           api-path="/api/pro/schedule/calendar"
           :collaborator-id="agendaCollaboratorId || null"
           :selectable="!!agendaCollaboratorId"
+          :pro-mode="true"
+          active-view="day"
           @date-click="openExceptionModal"
           @select="openConstraintModal"
           @event-click="onAgendaEventClick"
+          @range-change="onAgendaRangeChange"
         />
+        <AgendaCalendar
+          v-else-if="agendaViewMode === 'week'"
+          ref="agendaCalRef"
+          api-path="/api/pro/schedule/calendar"
+          :collaborator-id="agendaCollaboratorId || null"
+          :selectable="!!agendaCollaboratorId"
+          :pro-mode="true"
+          active-view="week"
+          @date-click="openExceptionModal"
+          @select="openConstraintModal"
+          @event-click="onAgendaEventClick"
+          @range-change="onAgendaRangeChange"
+        />
+
+        <!-- Liste détaillée -->
+        <div v-if="agendaViewMode === 'list'" class="agenda-bookings agenda-bookings--solo">
+          <div class="agenda-bookings__head">
+            <h2 class="agenda-bookings__title">Réservations de la période</h2>
+            <span v-if="agendaBookingsLoading" class="agenda-bookings__meta">
+              <Loader2 :size="14" class="spin" />
+            </span>
+            <span v-else class="agenda-bookings__meta">{{ agendaBookings.length }} rendez-vous</span>
+          </div>
+
+          <div v-if="!agendaBookingsLoading && !agendaBookings.length" class="empty-state agenda-bookings__empty">
+            <CalendarX :size="28" />
+            <p>Aucune réservation sur cette période.</p>
+          </div>
+
+          <div v-else class="agenda-bookings__days">
+            <section
+              v-for="group in agendaBookingsGrouped"
+              :key="group.dayKey"
+              class="agenda-bookings__day"
+            >
+              <h3 class="agenda-bookings__day-label">{{ group.label }}</h3>
+              <button
+                v-for="b in group.items"
+                :key="b._id"
+                type="button"
+                class="agenda-booking-row"
+                @click="openBookingDetail(b)"
+              >
+                <span class="agenda-booking-row__time">{{ formatBookingTimeRange(b.start, b.end) }}</span>
+                <span class="agenda-booking-row__body">
+                  <strong>{{ b.serviceName }}</strong>
+                  <span>{{ b.client?.firstName }} {{ b.client?.lastName }}</span>
+                </span>
+                <ChevronRight :size="16" class="agenda-booking-row__chev" />
+              </button>
+            </section>
+          </div>
+        </div>
+
         <button
           v-if="agendaCollaboratorId"
           type="button"
@@ -704,6 +811,45 @@
     </div>
   </Teleport>
 
+  <!-- Modale détail réservation -->
+  <Teleport to="body">
+    <div v-if="bookingDetailModal.open" class="modal-overlay" @click.self="bookingDetailModal.open = false">
+      <div class="svc-modal">
+        <div class="svc-modal__header">
+          <h3>Détail du rendez-vous</h3>
+          <button type="button" @click="bookingDetailModal.open = false"><X :size="20" /></button>
+        </div>
+        <div class="svc-modal__body booking-detail">
+          <p class="booking-detail__svc">{{ bookingDetailModal.serviceName }}</p>
+          <p class="booking-detail__when">
+            {{ bookingDetailModal.timeLabel }} – {{ bookingDetailModal.endLabel }}
+          </p>
+          <dl class="booking-detail__list">
+            <div>
+              <dt>Client</dt>
+              <dd>{{ bookingDetailModal.clientName || '—' }}</dd>
+            </div>
+            <div v-if="bookingDetailModal.clientPhone">
+              <dt>Téléphone</dt>
+              <dd><a :href="`tel:${bookingDetailModal.clientPhone}`">{{ bookingDetailModal.clientPhone }}</a></dd>
+            </div>
+            <div v-if="bookingDetailModal.duration">
+              <dt>Durée</dt>
+              <dd>{{ bookingDetailModal.duration }} min</dd>
+            </div>
+            <div v-if="bookingDetailModal.price != null">
+              <dt>Prix</dt>
+              <dd>{{ bookingDetailModal.price.toFixed(2) }} €</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="svc-modal__footer">
+          <button type="button" class="btn-primary" @click="bookingDetailModal.open = false">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
   <!-- Modale contrainte prestation (Planity) -->
   <Teleport to="body">
     <div v-if="constraintModal.open" class="modal-overlay" @click.self="constraintModal.open = false">
@@ -798,7 +944,7 @@ import {
   LayoutDashboard, CalendarCheck, Scissors, Star, MessageSquare,
   TrendingUp, User, LogOut, Menu, X, CalendarX, CalendarDays,
   Clock, AlertCircle, CheckCircle, ImagePlus, Loader2, Images, GripVertical,
-  Plus, Pencil, Trash2, Users, RefreshCw, Power
+  Plus, Pencil, Trash2, Users, RefreshCw, Power, ChevronRight
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -1367,21 +1513,183 @@ function copyText (text: string) {
 }
 
 onMounted(async () => {
+  fetchNextProBooking()
   await fetchCategories()
   await syncPhotos()
   fetchServices()
   fetchCollaborators()
 })
 
-watch(activeSection, (section) => {
-  if (section === 'team') fetchCollaborators()
-  if (section === 'agenda' || section === 'hours') fetchCollaborators()
-})
+const proBookingLoading = ref(false)
+const nextProBooking    = ref<{
+  start: string
+  serviceName: string
+  client?: { firstName: string; lastName: string; phone?: string }
+} | null>(null)
+
+async function fetchNextProBooking () {
+  proBookingLoading.value = true
+  try {
+    const res = await fetch('/api/pro/bookings?upcoming=1&limit=1', {
+      headers: { Authorization: `Bearer ${authStore.token}` }
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    nextProBooking.value = data.data?.[0] || null
+  } catch { /* ignore */ }
+  finally { proBookingLoading.value = false }
+}
+
+function formatProBookingDate (iso: string) {
+  return new Date(iso).toLocaleString('fr-FR', {
+    timeZone: 'Europe/Paris',
+    weekday: 'long', day: 'numeric', month: 'long',
+    hour: '2-digit', minute: '2-digit'
+  })
+}
 
 // ── Planning Sprint 2 ─────────────────────────────────
 const agendaCollaboratorId = ref('')
 const hoursCollaboratorId  = ref('')
 const agendaCalRef         = ref<{ refetch?: () => void } | null>(null)
+const agendaViewMode       = ref<'day' | 'week' | 'list'>('day')
+const agendaRange          = ref({ from: '', to: '' })
+const agendaBookings       = ref<AgendaBooking[]>([])
+const agendaBookingsLoading = ref(false)
+
+interface AgendaBooking {
+  _id: string
+  start: string
+  end: string
+  serviceName: string
+  duration?: number
+  price?: number
+  client?: { firstName: string; lastName: string; phone?: string }
+}
+
+const bookingDetailModal = reactive({
+  open         : false,
+  serviceName  : '',
+  clientName   : '',
+  clientPhone  : '',
+  timeLabel    : '',
+  endLabel     : '',
+  duration     : 0,
+  price        : null as number | null
+})
+
+const agendaBookingsGrouped = computed(() => {
+  const groups = new Map<string, { dayKey: string; label: string; items: AgendaBooking[] }>()
+  for (const b of agendaBookings.value) {
+    const d = new Date(b.start)
+    const dayKey = d.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
+    const label = d.toLocaleDateString('fr-FR', {
+      timeZone : 'Europe/Paris',
+      weekday  : 'long',
+      day      : 'numeric',
+      month    : 'long'
+    })
+    if (!groups.has(dayKey)) groups.set(dayKey, { dayKey, label, items: [] })
+    groups.get(dayKey)!.items.push(b)
+  }
+  return Array.from(groups.values())
+})
+
+function formatBookingTime (iso: string) {
+  return new Date(iso).toLocaleTimeString('fr-FR', {
+    timeZone : 'Europe/Paris',
+    hour     : '2-digit',
+    minute   : '2-digit'
+  })
+}
+
+function formatBookingTimeRange (start: string, end: string) {
+  return `${formatBookingTime(start)} – ${formatBookingTime(end)}`
+}
+
+function openBookingDetailFromEvent (payload: {
+  serviceName?: string
+  clientName?: string
+  clientPhone?: string
+  timeLabel?: string
+  endLabel?: string
+  duration?: number
+  price?: number
+}) {
+  Object.assign(bookingDetailModal, {
+    open        : true,
+    serviceName : payload.serviceName || 'Rendez-vous',
+    clientName  : payload.clientName || '',
+    clientPhone : payload.clientPhone || '',
+    timeLabel   : payload.timeLabel || '',
+    endLabel    : payload.endLabel || '',
+    duration    : payload.duration || 0,
+    price       : payload.price ?? null
+  })
+}
+
+function openBookingDetail (b: AgendaBooking) {
+  openBookingDetailFromEvent({
+    serviceName : b.serviceName,
+    clientName  : b.client ? `${b.client.firstName} ${b.client.lastName}`.trim() : '',
+    clientPhone : b.client?.phone || '',
+    timeLabel   : formatBookingTime(b.start),
+    endLabel    : formatBookingTime(b.end),
+    duration    : b.duration,
+    price       : b.price
+  })
+}
+
+async function fetchAgendaBookings () {
+  if (!agendaRange.value.from || activeSection.value !== 'agenda') return
+  agendaBookingsLoading.value = true
+  try {
+    const params = new URLSearchParams({
+      from : agendaRange.value.from,
+      to   : agendaRange.value.to
+    })
+    if (agendaCollaboratorId.value) params.set('collaboratorId', agendaCollaboratorId.value)
+    const res = await fetch(`/api/pro/bookings?${params}`, {
+      headers: { Authorization: `Bearer ${authStore.token}` }
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    agendaBookings.value = data.data || []
+  } catch { /* ignore */ }
+  finally { agendaBookingsLoading.value = false }
+}
+
+function onAgendaRangeChange ({ from, to }: { from: string; to: string }) {
+  agendaRange.value = { from, to }
+  fetchAgendaBookings()
+}
+
+watch(agendaCollaboratorId, () => {
+  fetchAgendaBookings()
+  agendaCalRef.value?.refetch?.()
+})
+
+watch(agendaViewMode, (mode) => {
+  if (mode === 'list' && !agendaRange.value.from) {
+    const now = new Date()
+    const day = now.getDay()
+    const diff = day === 0 ? -6 : 1 - day
+    const mon = new Date(now)
+    mon.setDate(now.getDate() + diff)
+    const sun = new Date(mon)
+    sun.setDate(mon.getDate() + 6)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    agendaRange.value = { from: fmt(mon), to: fmt(sun) }
+    fetchAgendaBookings()
+  }
+})
+
+watch(activeSection, (section) => {
+  if (section === 'team') fetchCollaborators()
+  if (section === 'agenda' || section === 'hours') fetchCollaborators()
+  if (section === 'home') fetchNextProBooking()
+  if (section === 'agenda' && agendaRange.value.from) fetchAgendaBookings()
+})
 
 const nonOwnerCollaborators = computed(() =>
   collaborators.value.filter(c => !c.isOwner)
@@ -1538,9 +1846,24 @@ async function loadConstraint (id: string) {
   }
 }
 
-function onAgendaEventClick ({ type, constraintId }: { type?: string; constraintId?: string }) {
-  if (type === 'service_constraint' && constraintId) {
-    loadConstraint(constraintId)
+function onAgendaEventClick (payload: {
+  type?: string
+  constraintId?: string
+  bookingId?: string
+  serviceName?: string
+  clientName?: string
+  clientPhone?: string
+  timeLabel?: string
+  endLabel?: string
+  duration?: number
+  price?: number
+}) {
+  if (payload.type === 'booking' && payload.bookingId) {
+    openBookingDetailFromEvent(payload)
+    return
+  }
+  if (payload.type === 'service_constraint' && payload.constraintId) {
+    loadConstraint(payload.constraintId)
   }
 }
 
@@ -1703,6 +2026,14 @@ body { margin: 0; }
 /* ── Section ── */
 .section-content { padding: 2rem 2rem 3rem; max-width: 900px; }
 .section-content--wide { max-width: 1100px; }
+
+.section-content--agenda {
+  padding-bottom: 1rem;
+}
+
+.section-content--agenda .page-sub.agenda-sub {
+  margin-bottom: 0.65rem;
+}
 .agenda-select {
   border: 1px solid #E4E0DC; border-radius: 10px; padding: 0.5rem 0.75rem;
   font-family: "Montserrat", sans-serif; font-size: 0.82rem; color: #4F3942;
@@ -1718,9 +2049,242 @@ body { margin: 0; }
   border-radius: 10px;
 }
 .constraint-add-btn { margin-top: 1rem; }
+
+.agenda-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.agenda-view-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  background: #F0EBE8;
+  border-radius: 12px;
+}
+
+.agenda-view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+}
+
+.agenda-view-tab:hover {
+  color: #4F3942;
+}
+
+.agenda-view-tab.active {
+  background: #fff;
+  color: #4F3942;
+  box-shadow: 0 1px 4px rgba(79, 57, 66, 0.12);
+}
+
+.agenda-sub {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.agenda-bookings--solo {
+  margin-top: 0;
+}
+
+.agenda-bookings--compact {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.agenda-bookings__link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4F3942;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .svc-modal__footer-right { display: flex; gap: 0.5rem; margin-left: auto; }
 .svc-modal__footer { display: flex; align-items: center; gap: 0.75rem; }
 .danger-text { color: #c0392b !important; }
+.booking-preview {
+  background: #fff; border: 1px solid #E4E0DC; border-radius: 14px;
+  padding: 1.25rem; margin-bottom: 1rem;
+}
+.booking-preview__svc { font-weight: 700; color: #2C1810; margin: 0 0 0.35rem; }
+.booking-preview__when { color: #4F3942; font-size: 0.88rem; margin: 0 0 0.25rem; }
+.booking-preview__client { color: #888; font-size: 0.82rem; margin: 0; }
+
+/* ── Liste RDV agenda ── */
+.agenda-bookings {
+  margin-top: 1.5rem;
+  background: #fff;
+  border: 1px solid #E4E0DC;
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+}
+
+.agenda-bookings__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #EADAF3;
+}
+
+.agenda-bookings__title {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2C1810;
+  margin: 0;
+}
+
+.agenda-bookings__meta {
+  font-size: 0.78rem;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.agenda-bookings__empty {
+  padding: 1.5rem 0;
+}
+
+.agenda-bookings__days {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.agenda-bookings__day-label {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: #4F3942;
+  margin: 0 0 0.5rem;
+}
+
+.agenda-booking-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.4rem;
+  background: #FDFBFA;
+  border: 1px solid #E4E0DC;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.18s, background 0.18s;
+}
+
+.agenda-booking-row:hover {
+  border-color: #D1A1C7;
+  background: #fff;
+}
+
+.agenda-booking-row__time {
+  flex-shrink: 0;
+  min-width: 108px;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #4F3942;
+}
+
+.agenda-booking-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.agenda-booking-row__body strong {
+  font-size: 0.88rem;
+  color: #2C1810;
+}
+
+.agenda-booking-row__body span {
+  font-size: 0.78rem;
+  color: #888;
+}
+
+.agenda-booking-row__chev {
+  flex-shrink: 0;
+  color: #ccc;
+}
+
+.booking-detail__svc {
+  font-family: "Montserrat", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #2C1810;
+  margin: 0 0 0.35rem;
+}
+
+.booking-detail__when {
+  font-size: 0.9rem;
+  color: #4F3942;
+  margin: 0 0 1.25rem;
+}
+
+.booking-detail__list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.booking-detail__list div {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 0.5rem;
+}
+
+.booking-detail__list dt {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #888;
+  margin: 0;
+}
+
+.booking-detail__list dd {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #2C1810;
+}
+
+.booking-detail__list a {
+  color: #4F3942;
+  text-decoration: none;
+}
+
+.booking-detail__list a:hover {
+  text-decoration: underline;
+}
+
 .page-title {
   font-family: "Playfair Display", Georgia, serif;
   font-size: 2rem; font-weight: 700; color: #4F3942; margin-bottom: 1.75rem;
