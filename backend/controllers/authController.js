@@ -4,6 +4,12 @@ const Pro    = require('../models/Pro')
 const Admin  = require('../models/Admin')
 const Collaborator = require('../models/Collaborator')
 const { geocodeAddress } = require('../utils/geocode')
+const { CASHBACK_MAX_EUR } = require('../utils/loyaltyHelpers')
+const {
+  assignVerificationToken,
+  sendClientVerificationEmail,
+  verifyClientByToken
+} = require('../utils/verificationHelpers')
 
 const JWT_SECRET  = process.env.JWT_SECRET  || 'c7beauty_dev_secret'
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d'
@@ -34,6 +40,22 @@ async function emailAlreadyExists (email) {
   return !!(c || p || col)
 }
 
+async function applyReferralBonus (client, referralCode) {
+  if (!referralCode) return
+
+  const sponsor = await Client.findOne({ myReferralCode: referralCode.trim().toUpperCase() })
+  if (!sponsor) return
+
+  const addBonus = (current = 0) => Math.min(CASHBACK_MAX_EUR, current + 5)
+
+  sponsor.wallet.cashback = addBonus(sponsor.wallet.cashback)
+  await sponsor.save()
+
+  client.referralUsed = referralCode.trim().toUpperCase()
+  client.wallet.cashback = addBonus(client.wallet.cashback)
+  await client.save()
+}
+
 // ── POST /api/auth/register/client ─────────────────────────────
 exports.registerClient = async (req, res) => {
   try {
@@ -55,22 +77,20 @@ exports.registerClient = async (req, res) => {
       postalCode     : postalCode || null,
       password,
       birthdate      : birthdate || null,
-      referralUsed   : referralCode || null,
-      myReferralCode : generateReferralCode()
+      referralUsed   : null,
+      myReferralCode : generateReferralCode(),
+      emailVerified  : false
     })
 
-    // Bonus parrainage : +5€ cashback pour le parrain ET le nouveau client
-    if (referralCode) {
-      await Client.findOneAndUpdate(
-        { myReferralCode: referralCode },
-        { $inc: { 'wallet.cashback': 5 } }
-      )
-      await Client.findByIdAndUpdate(client._id, { 'wallet.cashback': 5 })
-    }
+    await applyReferralBonus(client, referralCode)
+    await assignVerificationToken(client)
+    await sendClientVerificationEmail(client)
 
-    const token = signToken(client._id, 'client')
-
-    res.status(201).json({ message: 'Compte client créé.', token, user: client })
+    res.status(201).json({
+      message                   : 'Compte créé. Vérifiez votre boîte mail pour activer votre compte.',
+      requiresEmailVerification : true,
+      email                     : client.email
+    })
   } catch (err) {
     console.error('[registerClient]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
@@ -180,6 +200,14 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: 'Identifiants incorrects.' })
     }
 
+    if (role === 'client' && user.emailVerified === false) {
+      return res.status(403).json({
+        code    : 'EMAIL_NOT_VERIFIED',
+        message : 'Vérifiez votre adresse email avant de vous connecter.',
+        email   : user.email
+      })
+    }
+
     const token = signToken(user._id, role)
     res.json({ token, user, role })
   } catch (err) {
@@ -214,6 +242,60 @@ exports.loginAdmin = async (req, res) => {
     const token = signToken(admin._id, 'admin')
     res.json({ token, user: admin, role: 'admin' })
   } catch (err) {
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── GET /api/auth/verify-email ───────────────────────────────
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.query
+    const result = await verifyClientByToken(token)
+
+    if (!result.ok) {
+      return res.status(400).json({
+        message : result.reason === 'missing'
+          ? 'Lien de vérification invalide.'
+          : 'Lien expiré ou déjà utilisé.'
+      })
+    }
+
+    const jwtToken = signToken(result.client._id, 'client')
+
+    res.json({
+      message : 'Email vérifié ! Vous pouvez accéder à votre espace client.',
+      token   : jwtToken,
+      user    : result.client
+    })
+  } catch (err) {
+    console.error('[verifyEmail]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── POST /api/auth/resend-verification ───────────────────────
+exports.resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body
+    if (!email) return res.status(400).json({ message: 'Email requis.' })
+
+    const client = await Client.findOne({ email: email.toLowerCase() })
+      .select('+emailVerificationToken +emailVerificationExpires')
+
+    if (!client) {
+      return res.json({ message: 'Si un compte existe, un email a été envoyé.' })
+    }
+
+    if (client.emailVerified) {
+      return res.status(400).json({ message: 'Cet email est déjà vérifié.' })
+    }
+
+    await assignVerificationToken(client)
+    await sendClientVerificationEmail(client)
+
+    res.json({ message: 'Email de vérification renvoyé.' })
+  } catch (err) {
+    console.error('[resendVerification]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
   }
 }

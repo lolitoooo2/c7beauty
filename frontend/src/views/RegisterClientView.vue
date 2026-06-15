@@ -279,8 +279,10 @@ async function handleSubmit() {
       birthdate:    form.birthdate || undefined,
       referralCode: form.referral  || undefined
     })
-    toast.success(`Bienvenue ${form.firstName} ! Votre compte est créé. ✨`)
-    router.push('/espace-client')
+    router.push({
+      name  : 'verify-email-pending',
+      query : { email: form.email }
+    })
   } catch (err: unknown) {
     apiError.value = err instanceof Error ? err.message : 'Erreur lors de l\'inscription'
   } finally {

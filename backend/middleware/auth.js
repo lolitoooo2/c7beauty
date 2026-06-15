@@ -40,6 +40,27 @@ module.exports.requireRole = function (...roles) {
   }
 }
 
+/** Client connecté avec email vérifié (réservation, paiement). */
+module.exports.requireVerifiedClient = async function requireVerifiedClient (req, res, next) {
+  if (req.userRole !== 'client') {
+    return res.status(403).json({ message: 'Accès réservé aux clients.' })
+  }
+
+  const Client = require('../models/Client')
+  const client = await Client.findById(req.userId).select('emailVerified email')
+  if (!client) return res.status(404).json({ message: 'Client introuvable.' })
+
+  if (client.emailVerified === false) {
+    return res.status(403).json({
+      code    : 'EMAIL_NOT_VERIFIED',
+      message : 'Vérifiez votre email pour réserver.',
+      email   : client.email
+    })
+  }
+
+  next()
+}
+
 /** JWT optionnel — n'échoue pas si absent. */
 module.exports.optionalAuth = function optionalAuth (req, res, next) {
   const header = req.headers.authorization

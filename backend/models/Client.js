@@ -11,6 +11,9 @@ const clientSchema = new mongoose.Schema(
     lastName  : { type: String, required: true, trim: true },
     email     : { type: String, required: true, unique: true, lowercase: true, trim: true },
     password  : { type: String, required: true, minlength: 8, select: false },
+    emailVerified : { type: Boolean, default: false, index: true },
+    emailVerificationToken : { type: String, default: null, select: false },
+    emailVerificationExpires : { type: Date, default: null, select: false },
     phone      : { type: String, required: true, trim: true },
     postalCode : { type: String, default: null, trim: true, match: [/^(\d{5})?$/, 'Code postal invalide'] },
     avatar     : { type: String, default: null },
@@ -59,6 +62,8 @@ clientSchema.methods.comparePassword = function (plain) {
 clientSchema.methods.toJSON = function () {
   const obj = this.toObject()
   delete obj.password
+  delete obj.emailVerificationToken
+  delete obj.emailVerificationExpires
   return obj
 }
 

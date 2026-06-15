@@ -127,7 +127,12 @@ async function handleSubmit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
     router.push(redirect && redirect.startsWith('/') ? redirect : '/espace-client')
   } catch (err: unknown) {
-    apiError.value = err instanceof Error ? err.message : 'Identifiants incorrects'
+    const e = err as Error & { code?: string; email?: string }
+    if (e.code === 'EMAIL_NOT_VERIFIED') {
+      router.push({ name: 'verify-email-pending', query: { email: e.email || form.email } })
+      return
+    }
+    apiError.value = e.message || 'Identifiants incorrects'
   } finally {
     loading.value = false
   }

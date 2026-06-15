@@ -9,6 +9,7 @@ export interface ClientUser {
   firstName: string
   lastName: string
   email: string
+  emailVerified?: boolean
   phone: string
   postalCode?: string | null
   avatar: string | null
@@ -103,7 +104,8 @@ export const useAuthStore = defineStore('auth', () => {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.message || 'Erreur inscription')
-    setSession(data.token, data.user, 'client')
+    if (data.requiresEmailVerification) return data
+    if (data.token) setSession(data.token, data.user, 'client')
     return data
   }
 
@@ -136,8 +138,27 @@ export const useAuthStore = defineStore('auth', () => {
       body    : JSON.stringify({ email, password })
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'Identifiants incorrects')
+    if (!res.ok) {
+      const err = new Error(data.message || 'Identifiants incorrects') as Error & {
+        code?: string
+        email?: string
+      }
+      err.code  = data.code
+      err.email = data.email
+      throw err
+    }
     setSession(data.token, data.user, data.role)
+    return data
+  }
+
+  async function resendVerification (email: string) {
+    const res  = await fetch('/api/auth/resend-verification', {
+      method  : 'POST',
+      headers : { 'Content-Type': 'application/json' },
+      body    : JSON.stringify({ email })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Erreur')
     return data
   }
 
@@ -179,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
     token, user, role,
     isLoggedIn, isClient, isPro, isAdmin, isCollaborator, isPending,
     setSession, logout,
-    registerClient, registerPro, login, loginCollaborator, acceptCollaboratorInvite, fetchMe
+    registerClient, registerPro, login, loginCollaborator, acceptCollaboratorInvite, fetchMe,
+    resendVerification
   }
 })
