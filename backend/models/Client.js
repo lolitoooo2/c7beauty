@@ -21,11 +21,12 @@ const clientSchema = new mongoose.Schema(
     referralUsed   : { type: String, default: null },  // code utilisé à l'inscription
     myReferralCode : { type: String, unique: true, sparse: true },
 
-    // Fidélité
+    // Fidélité — 9 RDV plein tarif, 10e = -50 % (1×/mois) ; cashback +1 € dès 25 €
     wallet: {
-      cashback        : { type: Number, default: 0, min: 0, max: 30 },
-      points          : { type: Number, default: 0 },
-      prestationCount : { type: Number, default: 0 }   // compteur 11e prestation
+      cashback           : { type: Number, default: 0, min: 0, max: 30 },
+      points             : { type: Number, default: 0 },
+      prestationCount    : { type: Number, default: 0, min: 0, max: 9 },
+      lastHalfPriceMonth : { type: String, default: null }
     },
 
     // Réseaux sociaux connectés (OAuth futur)

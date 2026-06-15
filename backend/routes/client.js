@@ -14,6 +14,7 @@ router.put('/avatar',    avatarClientUpload.single('avatar'), uploadAvatar)
 router.delete('/avatar', deleteAvatar)
 
 const booking = require('../controllers/bookingController')
+router.get('/loyalty/preview',     booking.previewLoyalty)
 router.get('/bookings',              booking.listForClient)
 router.patch('/bookings/:id/cancel', booking.cancelByClient)
 

@@ -79,8 +79,8 @@
           <div class="summary-card">
             <div class="summary-card__icon"><CalendarCheck :size="22" /></div>
             <div class="summary-card__body">
-              <span class="summary-card__value">{{ client?.wallet?.prestationCount ?? 0 }} / 11</span>
-              <span class="summary-card__label">Vers la prestation offerte</span>
+              <span class="summary-card__value">{{ client?.wallet?.prestationCount ?? 0 }} / 9</span>
+              <span class="summary-card__label">Vers -50 % (10e RDV)</span>
             </div>
           </div>
 
@@ -187,7 +187,7 @@
         <div class="wallet-hero">
           <div class="wallet-hero__amount">{{ client?.wallet?.cashback?.toFixed(2) ?? '0.00' }} €</div>
           <div class="wallet-hero__label">Cashback disponible</div>
-          <div class="wallet-hero__note">Plafond : 30 € — Remise à zéro chaque année</div>
+          <div class="wallet-hero__note">+1 € cashback dès 25 € de prestation · Plafond 30 € · Reset annuel</div>
         </div>
 
         <div class="cards-grid" style="margin-top:1.5rem">
@@ -201,8 +201,8 @@
           <div class="summary-card">
             <div class="summary-card__icon"><Gift :size="20" /></div>
             <div class="summary-card__body">
-              <span class="summary-card__value">{{ client?.wallet?.prestationCount ?? 0 }} / 11</span>
-              <span class="summary-card__label">11e prestation gratuite</span>
+              <span class="summary-card__value">{{ client?.wallet?.prestationCount ?? 0 }} / 9</span>
+              <span class="summary-card__label">10e prestation : -50 % (1×/mois)</span>
             </div>
           </div>
         </div>

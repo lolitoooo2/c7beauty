@@ -3,6 +3,7 @@ const SlotHold     = require('../models/SlotHold')
 const Service      = require('../models/Service')
 const Collaborator = require('../models/Collaborator')
 const Pro          = require('../models/Pro')
+const Client       = require('../models/Client')
 const {
   isSlotAvailable,
   resolveCollaboratorForSlot,
@@ -11,6 +12,11 @@ const {
 } = require('../utils/bookingHelpers')
 const { dateAtTime, computeAvailableSlots } = require('../utils/scheduleHelpers')
 const { getPeriodBoundsParis } = require('../utils/timezoneHelpers')
+const {
+  computeBookingPrice,
+  applyLoyaltyAfterBooking,
+  getLoyaltyPreview
+} = require('../utils/loyaltyHelpers')
 
 function parseSlotTimes (dateStr, startTime, duration) {
   const start = dateAtTime(dateStr, startTime)
@@ -178,6 +184,12 @@ exports.confirmHold = async (req, res) => {
       return res.status(409).json({ message: 'Ce créneau vient d\'être pris.' })
     }
 
+    const client = await Client.findById(req.userId)
+    if (!client) return res.status(404).json({ message: 'Client introuvable.' })
+
+    const { originalPrice, finalPrice, halfPriceApplied, discountPercent } =
+      computeBookingPrice(client, service.price)
+
     const booking = await Booking.create({
       proId          : hold.proId,
       clientId       : req.userId,
@@ -188,8 +200,21 @@ exports.confirmHold = async (req, res) => {
       status         : 'confirmed',
       serviceName    : service.name,
       duration       : service.duration,
-      price          : service.price
+      price          : finalPrice,
+      originalPrice,
+      discountPercent,
+      cashbackEarned : 0
     })
+
+    const { cashbackEarned } = await applyLoyaltyAfterBooking(client, {
+      originalPrice,
+      halfPriceApplied
+    })
+
+    if (cashbackEarned > 0) {
+      booking.cashbackEarned = cashbackEarned
+      await booking.save()
+    }
 
     await SlotHold.findByIdAndDelete(hold._id)
 
@@ -200,10 +225,33 @@ exports.confirmHold = async (req, res) => {
 
     res.status(201).json({
       message : 'Rendez-vous confirmé !',
-      booking : formatBooking(populated)
+      booking : formatBooking(populated),
+      loyalty : {
+        halfPriceApplied,
+        discountPercent,
+        cashbackEarned
+      }
     })
   } catch (err) {
     console.error('[booking.confirmHold]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── GET /api/client/loyalty/preview ───────────────────
+exports.previewLoyalty = async (req, res) => {
+  try {
+    const price = Number(req.query.price)
+    if (!price || price <= 0) {
+      return res.status(400).json({ message: 'Paramètre price requis.' })
+    }
+
+    const client = await Client.findById(req.userId)
+    if (!client) return res.status(404).json({ message: 'Client introuvable.' })
+
+    res.json(getLoyaltyPreview(client, price))
+  } catch (err) {
+    console.error('[booking.previewLoyalty]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
   }
 }

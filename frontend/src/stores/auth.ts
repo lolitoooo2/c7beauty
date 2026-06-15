@@ -14,7 +14,7 @@ export interface ClientUser {
   avatar: string | null
   birthdate?: string
   myReferralCode?: string
-  wallet: { cashback: number; points: number; prestationCount: number }
+  wallet: { cashback: number; points: number; prestationCount: number; lastHalfPriceMonth?: string | null }
   socialLinks: { instagram: string | null; facebook: string | null }
   createdAt: string
 }

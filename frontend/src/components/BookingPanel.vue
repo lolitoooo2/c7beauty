@@ -145,8 +145,21 @@
                 Premier collaborateur disponible
               </p>
               <div class="bk-summary__price">
-                {{ service.name }} · {{ service.price.toFixed(2) }} €
+                <template v-if="loyaltyPreview?.halfPriceEligible">
+                  <span class="bk-summary__price-old">{{ service.price.toFixed(2) }} €</span>
+                  <span class="bk-summary__price-new">{{ displayPrice.toFixed(2) }} €</span>
+                  <span class="bk-summary__badge">-50 % fidélité (10e RDV)</span>
+                </template>
+                <template v-else>
+                  {{ service.name }} · {{ displayPrice.toFixed(2) }} €
+                </template>
               </div>
+              <p v-if="loyaltyPreview?.cashbackEarn" class="bk-summary__cashback">
+                +{{ loyaltyPreview.cashbackEarn.toFixed(2) }} € cashback après confirmation
+              </p>
+              <p v-else-if="authStore.isClient && service.price >= 25 && !loyaltyPreview?.cashbackEarn && loyaltyPreview" class="bk-summary__cashback bk-summary__cashback--muted">
+                Cagnotte pleine (30 € max)
+              </p>
               <button
                 type="button"
                 class="bk-confirm-btn"
@@ -258,7 +271,41 @@ const confirmError     = ref('')
 const confirmed        = ref(false)
 const summaryEl        = ref<HTMLElement | null>(null)
 
+interface LoyaltyPreview {
+  prestationCount: number
+  fullPriceTarget: number
+  halfPriceEligible: boolean
+  halfPriceUsedThisMonth: boolean
+  originalPrice: number
+  finalPrice: number
+  halfPriceApplied: boolean
+  discountPercent: number
+  cashbackEarn: number
+  cashbackMinEur: number
+}
+
+const loyaltyPreview = ref<LoyaltyPreview | null>(null)
 const HOLD_STORAGE_KEY = 'c7_booking_hold'
+
+const displayPrice = computed(() =>
+  loyaltyPreview.value?.finalPrice ?? props.service.price
+)
+
+async function fetchLoyaltyPreview () {
+  if (!authStore.isClient || !authStore.token) {
+    loyaltyPreview.value = null
+    return
+  }
+  try {
+    const res = await fetch(
+      `/api/client/loyalty/preview?price=${props.service.price}`,
+      { headers: { Authorization: `Bearer ${authStore.token}` } }
+    )
+    if (res.ok) loyaltyPreview.value = await res.json()
+  } catch {
+    loyaltyPreview.value = null
+  }
+}
 
 const eligibleCollaborators = computed(() =>
   props.collaborators.filter(c =>
@@ -421,7 +468,14 @@ async function confirmBooking () {
 
     sessionStorage.removeItem(HOLD_STORAGE_KEY)
     confirmed.value = true
-    toast.success('Rendez-vous confirmé !')
+    const loyaltyMsg = data.loyalty?.cashbackEarned
+      ? ` (+${data.loyalty.cashbackEarned.toFixed(2)} € cashback)`
+      : data.loyalty?.halfPriceApplied
+        ? ' (-50 % fidélité appliqué)'
+        : ''
+    toast.success(`Rendez-vous confirmé !${loyaltyMsg}`)
+    await authStore.fetchMe()
+    fetchLoyaltyPreview()
     fetchWeek()
   } catch (err: unknown) {
     confirmError.value = err instanceof Error ? err.message : 'Erreur'
@@ -462,9 +516,12 @@ async function resumePendingHold () {
 
 watch(selectedCollabId, () => fetchWeek())
 
+watch(() => authStore.isClient, () => { fetchLoyaltyPreview() })
+
 onMounted(() => {
   selectedCollabId.value = ANY_COLLAB
   fetchWeek()
+  fetchLoyaltyPreview()
   if (sessionStorage.getItem(HOLD_STORAGE_KEY) && authStore.isClient) {
     resumePendingHold()
   }
@@ -786,9 +843,44 @@ onMounted(() => {
 .bk-summary__price {
   font-size: 0.82rem;
   color: #888;
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid #F0EBE8;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+}
+
+.bk-summary__price-old {
+  text-decoration: line-through;
+  color: #bbb;
+}
+
+.bk-summary__price-new {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #4F3942;
+}
+
+.bk-summary__badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #4F3942;
+  background: #EADAF3;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.bk-summary__cashback {
+  font-size: 0.75rem;
+  color: #2e7d32;
+  margin: 0 0 0.75rem;
+}
+
+.bk-summary__cashback--muted {
+  color: #888;
 }
 
 .bk-summary__placeholder {

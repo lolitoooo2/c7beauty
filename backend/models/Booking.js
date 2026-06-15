@@ -39,6 +39,9 @@ const bookingSchema = new mongoose.Schema(
     serviceName : { type: String, required: true },
     duration    : { type: Number, required: true },
     price       : { type: Number, required: true },
+    originalPrice   : { type: Number, default: null },
+    discountPercent : { type: Number, default: 0 },
+    cashbackEarned  : { type: Number, default: 0 },
 
     cancelledAt : { type: Date, default: null },
     cancelledBy : {
