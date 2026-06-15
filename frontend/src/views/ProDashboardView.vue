@@ -88,7 +88,7 @@
                 {{ proStatsLoading ? '…' : proStats.revenueWeek.toFixed(0) }}
                 <span class="stat-unit">€</span>
               </span>
-              <span class="summary-card__label">CA prévu (semaine)</span>
+              <span class="summary-card__label">CA net prévu (semaine)</span>
             </div>
           </div>
           <div class="summary-card">
@@ -179,7 +179,7 @@
               <span class="pro-agenda-stats__value">
                 {{ proStatsLoading ? '…' : proStats.revenueWeek.toFixed(0) }} €
               </span>
-              <span class="pro-agenda-stats__label">CA semaine</span>
+              <span class="pro-agenda-stats__label">CA net (semaine)</span>
             </div>
           </div>
           <div class="pro-agenda-stats__card">

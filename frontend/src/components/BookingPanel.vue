@@ -14,7 +14,6 @@
           <button type="button" class="bk-remove" @click="$emit('close')">Supprimer</button>
         </div>
 
-        <!-- Collaborateurs — ligne horizontale Planity -->
         <div class="bk-collabs">
           <p class="bk-collabs__label">Choisir avec qui ?</p>
           <div class="bk-collabs__row">
@@ -65,153 +64,146 @@
           </div>
         </div>
 
-        <div class="bk-layout">
-          <!-- Calendrier -->
-          <div class="bk-layout__calendar">
-            <div v-if="loading" class="bk-loading">
-              <Loader2 :size="22" class="spin" /> Chargement des disponibilités…
-            </div>
+        <div v-if="loading" class="bk-loading">
+          <Loader2 :size="22" class="spin" /> Chargement des disponibilités…
+        </div>
 
-            <div v-else-if="error" class="bk-empty">{{ error }}</div>
+        <div v-else-if="error" class="bk-empty">{{ error }}</div>
 
-            <div v-else class="bk-grid-wrap">
-              <div class="bk-grid">
-                <div v-for="day in displayDays" :key="day.date" class="bk-day-col">
-                  <p class="bk-day-label">{{ shortDayLabel(day) }}</p>
-                  <div class="bk-slots">
-                    <template
-                      v-for="slot in slotsForDay(day)"
-                      :key="`${day.date}-${slot.time}`"
-                    >
-                      <span
-                        v-if="!slot.inSchedule"
-                        class="bk-slot bk-slot--gap"
-                        aria-hidden="true"
-                      >&nbsp;</span>
-                      <button
-                        v-else-if="slot.available"
-                        type="button"
-                        class="bk-slot"
-                        :class="{ selected: selectedSlot?.date === day.date && selectedSlot?.time === slot.time }"
-                        @click="pickSlot(day.date, slot)"
-                      >
-                        {{ slot.time }}
-                      </button>
-                      <span
-                        v-else-if="slot.occupied"
-                        class="bk-slot bk-slot--disabled"
-                        title="Créneau réservé"
-                      >
-                        {{ slot.time }}
-                      </span>
-                      <span
-                        v-else
-                        class="bk-slot bk-slot--blocked"
-                        title="Créneau indisponible"
-                      >
-                        {{ slot.time }}
-                      </span>
-                    </template>
-                    <p v-if="!slotsForDay(day).some(s => s.inSchedule)" class="bk-no-slots">—</p>
-                  </div>
-                </div>
+        <div v-else class="bk-grid-wrap">
+          <div class="bk-grid">
+            <div v-for="day in displayDays" :key="day.date" class="bk-day-col">
+              <p class="bk-day-label">{{ shortDayLabel(day) }}</p>
+              <div class="bk-slots">
+                <template
+                  v-for="slot in slotsForDay(day)"
+                  :key="`${day.date}-${slot.time}`"
+                >
+                  <span
+                    v-if="!slot.inSchedule"
+                    class="bk-slot bk-slot--gap"
+                    aria-hidden="true"
+                  >&nbsp;</span>
+                  <button
+                    v-else-if="slot.available"
+                    type="button"
+                    class="bk-slot"
+                    :class="{ selected: selectedSlot?.date === day.date && selectedSlot?.time === slot.time }"
+                    @click="pickSlot(day.date, slot)"
+                  >
+                    {{ slot.time }}
+                  </button>
+                  <span
+                    v-else-if="slot.occupied"
+                    class="bk-slot bk-slot--disabled"
+                    title="Créneau réservé"
+                  >
+                    {{ slot.time }}
+                  </span>
+                  <span
+                    v-else
+                    class="bk-slot bk-slot--blocked"
+                    title="Créneau indisponible"
+                  >
+                    {{ slot.time }}
+                  </span>
+                </template>
+                <p v-if="!slotsForDay(day).some(s => s.inSchedule)" class="bk-no-slots">—</p>
               </div>
             </div>
           </div>
-
-          <!-- Récap — colonne droite sticky sur desktop, au-dessus sur mobile -->
-          <aside
-            ref="summaryEl"
-            class="bk-summary"
-            :class="{ 'bk-summary--active': selectedSlot || confirmed, 'bk-summary--done': confirmed }"
-          >
-            <template v-if="confirmed">
-              <p class="bk-summary__label">Confirmé</p>
-              <CheckCircle :size="28" class="bk-summary__icon-ok" />
-              <p class="bk-summary__title">Rendez-vous confirmé !</p>
-              <p class="bk-summary__detail">{{ selectedSlotLabel || 'Votre créneau est enregistré.' }}</p>
-              <router-link to="/espace-client" class="bk-confirm-btn bk-confirm-btn--link">
-                Voir mes réservations →
-              </router-link>
-            </template>
-
-            <template v-else-if="selectedSlot">
-              <p class="bk-summary__label">Votre créneau</p>
-              <p class="bk-summary__title">{{ selectedSlotLabel }}</p>
-              <p v-if="assignedCollabName" class="bk-summary__detail">
-                avec <strong>{{ assignedCollabName }}</strong>
-              </p>
-              <p v-else-if="selectedCollabId === ANY_COLLAB" class="bk-summary__detail">
-                Premier collaborateur disponible
-              </p>
-              <div class="bk-summary__price">
-                <template v-if="loyaltyPreview?.halfPriceEligible">
-                  <span class="bk-summary__price-old">{{ service.price.toFixed(2) }} €</span>
-                  <span class="bk-summary__price-new">{{ displayPrice.toFixed(2) }} €</span>
-                  <span class="bk-summary__badge">-50 % fidélité (10e RDV)</span>
-                </template>
-                <template v-else>
-                  {{ service.name }} · {{ displayPrice.toFixed(2) }} €
-                </template>
-              </div>
-              <p v-if="loyaltyPreview?.cashbackEarn" class="bk-summary__cashback">
-                +{{ loyaltyPreview.cashbackEarn.toFixed(2) }} € cashback après confirmation
-              </p>
-              <p v-else-if="authStore.isClient && service.price >= 25 && !loyaltyPreview?.cashbackEarn && loyaltyPreview" class="bk-summary__cashback bk-summary__cashback--muted">
-                Cagnotte pleine (30 € max)
-              </p>
-              <button
-                type="button"
-                class="bk-confirm-btn"
-                :disabled="confirming"
-                @click="confirmBooking"
-              >
-                <Loader2 v-if="confirming" :size="16" class="spin" />
-                {{ authStore.isClient ? 'Confirmer le rendez-vous' : 'Se connecter pour confirmer' }}
-              </button>
-              <p v-if="confirmError" class="bk-confirm-error">{{ confirmError }}</p>
-            </template>
-
-            <template v-else>
-              <p class="bk-summary__label">Récapitulatif</p>
-              <p class="bk-summary__placeholder">
-                Sélectionnez un créneau dans le calendrier pour confirmer votre rendez-vous.
-              </p>
-            </template>
-          </aside>
         </div>
       </div>
     </section>
 
-    <!-- Barre fixe mobile quand créneau sélectionné -->
-    <Teleport to="body">
-      <div
-        v-if="selectedSlot && !confirmed"
-        class="bk-mobile-bar"
-      >
-        <div class="bk-mobile-bar__info">
-          <span class="bk-mobile-bar__time">{{ selectedSlotLabel }}</span>
-          <span v-if="assignedCollabName" class="bk-mobile-bar__who">{{ assignedCollabName }}</span>
+    <!-- Paiement — affiché dès qu'un créneau est choisi -->
+    <section
+      v-if="selectedSlot && !confirmed"
+      ref="paymentSectionEl"
+      class="bk-block bk-payment"
+    >
+      <div class="bk-payment__card">
+        <header class="bk-payment__head">
+          <div>
+            <p class="bk-payment__step">Étape 3 · Paiement</p>
+            <h2 class="bk-payment__title">Finaliser votre rendez-vous</h2>
+            <p class="bk-payment__sub">Vous restez sur C7'Beauty · paiement sécurisé par Stripe</p>
+          </div>
+          <button type="button" class="bk-payment__back" @click="clearSlot">
+            Changer de créneau
+          </button>
+        </header>
+
+        <div class="bk-payment__recap">
+          <p class="bk-payment__recap-label">Votre créneau</p>
+          <p class="bk-payment__recap-when">{{ selectedSlotLabel }}</p>
+          <p v-if="assignedCollabName" class="bk-payment__recap-who">
+            avec <strong>{{ assignedCollabName }}</strong>
+          </p>
+          <p v-else-if="selectedCollabId === ANY_COLLAB" class="bk-payment__recap-who">
+            Premier collaborateur disponible
+          </p>
+          <div class="bk-payment__recap-price">
+            <template v-if="loyaltyPreview?.halfPriceEligible">
+              <span class="bk-payment__price-old">{{ service.price.toFixed(2) }} €</span>
+              <span class="bk-payment__price-new">{{ displayPrice.toFixed(2) }} €</span>
+              <span class="bk-payment__badge">-50 % fidélité</span>
+            </template>
+            <template v-else>
+              <span class="bk-payment__price-new">{{ service.name }} · {{ displayPrice.toFixed(2) }} €</span>
+            </template>
+          </div>
+          <p v-if="loyaltyPreview?.cashbackEarn" class="bk-payment__cashback">
+            +{{ loyaltyPreview.cashbackEarn.toFixed(2) }} € cashback après paiement
+          </p>
         </div>
-        <button
-          type="button"
-          class="bk-mobile-bar__btn"
-          :disabled="confirming"
-          @click="confirmBooking"
-        >
-          <Loader2 v-if="confirming" :size="15" class="spin" />
-          {{ authStore.isClient ? 'Confirmer' : 'Connexion' }}
-        </button>
+
+        <div v-if="!authStore.isClient" class="bk-payment__login">
+          <p>Connectez-vous pour régler votre rendez-vous.</p>
+          <button type="button" class="bk-confirm-btn" @click="goLogin">
+            Se connecter pour payer
+          </button>
+        </div>
+
+        <template v-else>
+          <div v-if="paymentLoading" class="bk-payment__loading">
+            <Loader2 :size="28" class="spin" />
+            <p>Préparation du paiement sécurisé…</p>
+          </div>
+
+          <div ref="stripeMountEl" class="bk-payment__stripe" />
+
+          <p v-if="paymentError" class="bk-payment__error">{{ paymentError }}</p>
+          <p v-if="paymentError" class="bk-payment__retry">
+            <button type="button" class="bk-payment__retry-btn" @click="startCheckout">
+              Réessayer le paiement
+            </button>
+          </p>
+        </template>
+
+        <p class="bk-payment__trust">
+          🔒 Paiement chiffré — nous ne stockons jamais vos coordonnées bancaires.
+        </p>
       </div>
-    </Teleport>
+    </section>
+
+    <!-- Confirmation -->
+    <section v-if="confirmed" class="bk-block bk-done">
+      <CheckCircle :size="32" class="bk-done__icon" />
+      <h2 class="bk-done__title">Rendez-vous confirmé !</h2>
+      <p class="bk-done__detail">{{ selectedSlotLabel }}</p>
+      <router-link to="/espace-client" class="bk-confirm-btn bk-confirm-btn--link">
+        Voir mes réservations →
+      </router-link>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { loadStripe, type StripeEmbeddedCheckout } from '@stripe/stripe-js'
 import { ChevronLeft, ChevronRight, CalendarDays, Loader2, Clock, CheckCircle } from 'lucide-vue-next'
-import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 
 interface Service {
@@ -253,7 +245,6 @@ const props = defineProps<{
 
 defineEmits<{ close: [] }>()
 
-const toast     = useToast()
 const authStore = useAuthStore()
 const router    = useRouter()
 const ANY_COLLAB = ''
@@ -266,10 +257,13 @@ const days             = ref<DayData[]>([])
 const selectedSlot     = ref<{ date: string; time: string; collaboratorIds: string[] } | null>(null)
 const holdId           = ref<string | null>(null)
 const assignedCollabId = ref<string | null>(null)
-const confirming       = ref(false)
-const confirmError     = ref('')
 const confirmed        = ref(false)
-const summaryEl        = ref<HTMLElement | null>(null)
+const paymentSectionEl = ref<HTMLElement | null>(null)
+const paymentLoading   = ref(false)
+const paymentError     = ref('')
+const stripeMountEl    = ref<HTMLElement | null>(null)
+let embeddedCheckout: StripeEmbeddedCheckout | null = null
+let checkoutAbort = false
 
 interface LoyaltyPreview {
   prestationCount: number
@@ -290,22 +284,6 @@ const HOLD_STORAGE_KEY = 'c7_booking_hold'
 const displayPrice = computed(() =>
   loyaltyPreview.value?.finalPrice ?? props.service.price
 )
-
-async function fetchLoyaltyPreview () {
-  if (!authStore.isClient || !authStore.token) {
-    loyaltyPreview.value = null
-    return
-  }
-  try {
-    const res = await fetch(
-      `/api/client/loyalty/preview?price=${props.service.price}`,
-      { headers: { Authorization: `Bearer ${authStore.token}` } }
-    )
-    if (res.ok) loyaltyPreview.value = await res.json()
-  } catch {
-    loyaltyPreview.value = null
-  }
-}
 
 const eligibleCollaborators = computed(() =>
   props.collaborators.filter(c =>
@@ -356,6 +334,38 @@ function slotsForDay (day: DayData) {
   return day.slots
 }
 
+function teardownCheckout () {
+  if (embeddedCheckout) {
+    embeddedCheckout.destroy()
+    embeddedCheckout = null
+  }
+  if (stripeMountEl.value) stripeMountEl.value.innerHTML = ''
+}
+
+function clearSlot () {
+  checkoutAbort = true
+  teardownCheckout()
+  selectedSlot.value = null
+  holdId.value = null
+  assignedCollabId.value = null
+  paymentError.value = ''
+  paymentLoading.value = false
+  sessionStorage.removeItem(HOLD_STORAGE_KEY)
+}
+
+function goLogin () {
+  router.push({
+    path  : '/login/client',
+    query : { redirect: router.currentRoute.value.fullPath }
+  })
+}
+
+function scrollToPayment () {
+  requestAnimationFrame(() => {
+    paymentSectionEl.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
 function shiftWeek (delta: number) {
   const d = new Date(weekStart.value + 'T12:00:00')
   d.setDate(d.getDate() + delta)
@@ -366,7 +376,7 @@ function shiftWeek (delta: number) {
 async function fetchWeek () {
   loading.value = true
   error.value   = ''
-  selectedSlot.value = null
+  clearSlot()
   try {
     const params = new URLSearchParams({
       proId     : props.proId,
@@ -396,34 +406,46 @@ async function fetchWeek () {
   }
 }
 
-function pickSlot (date: string, slot: DaySlot) {
+async function pickSlot (date: string, slot: DaySlot) {
   if (!slot.available) return
+
+  checkoutAbort = true
+  teardownCheckout()
+  paymentError.value = ''
+  paymentLoading.value = false
+  confirmed.value = false
+
   const collaboratorIds = slot.collaboratorIds?.length
     ? slot.collaboratorIds
     : selectedCollabId.value
       ? [selectedCollabId.value]
       : []
+
   selectedSlot.value = { date, time: slot.time, collaboratorIds }
   holdId.value = null
   assignedCollabId.value = null
-  confirmError.value = ''
-  confirmed.value = false
-  requestAnimationFrame(() => {
-    summaryEl.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  })
+
+  await nextTick()
+  scrollToPayment()
+
+  if (authStore.isClient) {
+    await startCheckout()
+  }
 }
 
 async function createHold () {
   if (!selectedSlot.value) return null
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+  const headers: Record<string, string> = {
+    'Content-Type' : 'application/json',
+    Authorization  : `Bearer ${authStore.token}`
+  }
 
   const body: Record<string, unknown> = {
-    proId     : props.proId,
-    serviceId : props.service._id,
-    date      : selectedSlot.value.date,
-    startTime : selectedSlot.value.time,
+    proId           : props.proId,
+    serviceId       : props.service._id,
+    date            : selectedSlot.value.date,
+    startTime       : selectedSlot.value.time,
     collaboratorIds : selectedSlot.value.collaboratorIds
   }
   if (selectedCollabId.value) body.collaboratorId = selectedCollabId.value
@@ -438,10 +460,62 @@ async function createHold () {
   return data.holdId as string
 }
 
-async function confirmBooking () {
-  if (!selectedSlot.value) return
-  confirmError.value = ''
-  confirming.value = true
+async function mountEmbeddedCheckout ({
+  clientSecret,
+  sessionId,
+  publishableKey
+}: {
+  clientSecret: string
+  sessionId: string
+  publishableKey: string
+}) {
+  const pk = publishableKey || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+  if (!pk) throw new Error('Clé Stripe publishable manquante.')
+
+  const stripe = await loadStripe(pk)
+  if (!stripe) throw new Error('Impossible de charger Stripe.')
+
+  teardownCheckout()
+
+  const checkout = await stripe.initEmbeddedCheckout({
+    clientSecret,
+    onComplete: () => {
+      sessionStorage.removeItem(HOLD_STORAGE_KEY)
+      router.push({
+        name  : 'salon-booking-success',
+        params: { id: props.proId, serviceId: props.service._id },
+        query : { session_id: sessionId }
+      })
+    }
+  })
+
+  embeddedCheckout = checkout
+  await nextTick()
+  if (stripeMountEl.value) checkout.mount(stripeMountEl.value)
+}
+
+async function fetchLoyaltyPreview () {
+  if (!authStore.isClient || !authStore.token) {
+    loyaltyPreview.value = null
+    return
+  }
+  try {
+    const res = await fetch(
+      `/api/client/loyalty/preview?price=${props.service.price}`,
+      { headers: { Authorization: `Bearer ${authStore.token}` } }
+    )
+    if (res.ok) loyaltyPreview.value = await res.json()
+  } catch {
+    loyaltyPreview.value = null
+  }
+}
+
+async function startCheckout () {
+  if (!selectedSlot.value || !authStore.isClient) return
+
+  checkoutAbort = false
+  paymentError.value = ''
+  paymentLoading.value = true
 
   try {
     let currentHoldId = holdId.value
@@ -449,13 +523,7 @@ async function confirmBooking () {
       currentHoldId = await createHold()
     }
 
-    if (!authStore.isClient) {
-      const returnUrl = router.currentRoute.value.fullPath
-      router.push({ path: '/login/client', query: { redirect: returnUrl } })
-      return
-    }
-
-    const res = await fetch('/api/bookings/confirm', {
+    const res = await fetch('/api/bookings/checkout', {
       method  : 'POST',
       headers : {
         'Content-Type' : 'application/json',
@@ -464,67 +532,55 @@ async function confirmBooking () {
       body: JSON.stringify({ holdId: currentHoldId })
     })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.message || 'Confirmation impossible.')
+    if (res.status === 403 && data.code === 'EMAIL_NOT_VERIFIED') {
+      router.push({
+        name  : 'verify-email-pending',
+        query : { email: data.email || authStore.user?.email || '' }
+      })
+      return
+    }
+    if (!res.ok) throw new Error(data.message || 'Paiement impossible.')
+    if (!data.clientSecret) throw new Error('Session de paiement introuvable.')
+    if (checkoutAbort) return
 
-    sessionStorage.removeItem(HOLD_STORAGE_KEY)
-    confirmed.value = true
-    const loyaltyMsg = data.loyalty?.cashbackEarned
-      ? ` (+${data.loyalty.cashbackEarned.toFixed(2)} € cashback)`
-      : data.loyalty?.halfPriceApplied
-        ? ' (-50 % fidélité appliqué)'
-        : ''
-    toast.success(`Rendez-vous confirmé !${loyaltyMsg}`)
-    await authStore.fetchMe()
-    fetchLoyaltyPreview()
-    fetchWeek()
-  } catch (err: unknown) {
-    confirmError.value = err instanceof Error ? err.message : 'Erreur'
-    holdId.value = null
-    sessionStorage.removeItem(HOLD_STORAGE_KEY)
-  } finally {
-    confirming.value = false
-  }
-}
-
-async function resumePendingHold () {
-  const stored = sessionStorage.getItem(HOLD_STORAGE_KEY)
-  if (!stored || !authStore.isClient) return
-  holdId.value = stored
-  confirming.value = true
-  try {
-    const res = await fetch('/api/bookings/confirm', {
-      method  : 'POST',
-      headers : {
-        'Content-Type' : 'application/json',
-        Authorization  : `Bearer ${authStore.token}`
-      },
-      body: JSON.stringify({ holdId: stored })
+    paymentLoading.value = false
+    await nextTick()
+    await mountEmbeddedCheckout({
+      clientSecret   : data.clientSecret,
+      sessionId      : data.sessionId,
+      publishableKey : data.publishableKey
     })
-    const data = await res.json()
-    if (res.ok) {
-      sessionStorage.removeItem(HOLD_STORAGE_KEY)
-      confirmed.value = true
-      toast.success('Rendez-vous confirmé !')
-    } else if (res.status === 410 || res.status === 409) {
-      sessionStorage.removeItem(HOLD_STORAGE_KEY)
+  } catch (err: unknown) {
+    if (checkoutAbort) return
+    paymentError.value = err instanceof Error ? err.message : 'Erreur de paiement'
+    if (paymentError.value.includes('expiré') || paymentError.value.includes('pris')) {
       holdId.value = null
+      sessionStorage.removeItem(HOLD_STORAGE_KEY)
     }
   } finally {
-    confirming.value = false
+    paymentLoading.value = false
   }
 }
 
 watch(selectedCollabId, () => fetchWeek())
 
-watch(() => authStore.isClient, () => { fetchLoyaltyPreview() })
+watch(() => authStore.isClient, async (isClient) => {
+  await fetchLoyaltyPreview()
+  if (isClient && selectedSlot.value && !embeddedCheckout && !paymentLoading.value) {
+    await nextTick()
+    await startCheckout()
+  }
+})
+
+onBeforeUnmount(() => {
+  checkoutAbort = true
+  teardownCheckout()
+})
 
 onMounted(() => {
   selectedCollabId.value = ANY_COLLAB
   fetchWeek()
   fetchLoyaltyPreview()
-  if (sessionStorage.getItem(HOLD_STORAGE_KEY) && authStore.isClient) {
-    resumePendingHold()
-  }
 })
 </script>
 
@@ -538,7 +594,6 @@ onMounted(() => {
 
 .bk-block { margin: 0; }
 
-/* Carte prestation — style svc-group */
 .bk-card {
   background: #fff;
   border: 1px solid #E4E0DC;
@@ -595,13 +650,10 @@ onMounted(() => {
   text-decoration: underline;
   flex-shrink: 0;
   padding: 0;
-  transition: color 0.18s;
 }
 .bk-remove:hover { color: #4F3942; }
 
-.bk-collabs {
-  padding: 1.25rem 1.5rem 1.5rem;
-}
+.bk-collabs { padding: 1.25rem 1.5rem 1.5rem; }
 
 .bk-collabs__label {
   font-family: "Montserrat", sans-serif;
@@ -618,7 +670,6 @@ onMounted(() => {
   gap: 0.65rem;
   overflow-x: auto;
   padding-bottom: 0.25rem;
-  scrollbar-width: thin;
 }
 
 .bk-collab {
@@ -634,16 +685,12 @@ onMounted(() => {
   border-radius: 12px;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
   position: relative;
   background: #fff;
+  transition: border-color 0.18s, box-shadow 0.18s;
 }
 
-.bk-collab:hover {
-  border-color: #D1A1C7;
-  background: #FDFBFA;
-}
-
+.bk-collab:hover { border-color: #D1A1C7; background: #FDFBFA; }
 .bk-collab.active {
   border-color: #4F3942;
   background: #FDFBFA;
@@ -673,16 +720,8 @@ onMounted(() => {
   color: #4F3942;
 }
 
-.bk-collab__avatar--any {
-  background: #F0EBE8;
-  color: #888;
-}
-
-.bk-collab__avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+.bk-collab__avatar--any { background: #F0EBE8; color: #888; }
+.bk-collab__avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .bk-collab__name {
   font-family: "Montserrat", sans-serif;
@@ -692,7 +731,6 @@ onMounted(() => {
   line-height: 1.25;
 }
 
-/* Bloc date & heure */
 .bk-datetime {
   background: #fff;
   border: 1px solid #E4E0DC;
@@ -736,11 +774,6 @@ onMounted(() => {
   justify-content: center;
   cursor: pointer;
   color: #4F3942;
-  transition: background 0.18s, border-color 0.18s;
-}
-.bk-nav-btn:hover {
-  background: #EADAF3;
-  border-color: #D1A1C7;
 }
 
 .bk-date-btn {
@@ -757,11 +790,6 @@ onMounted(() => {
   color: #4F3942;
   cursor: pointer;
   position: relative;
-  transition: background 0.18s, border-color 0.18s;
-}
-.bk-date-btn:hover {
-  background: #FDFBFA;
-  border-color: #D1A1C7;
 }
 
 .bk-date-input {
@@ -779,129 +807,6 @@ onMounted(() => {
   padding: 2.5rem;
   color: #aaa;
   font-size: 0.88rem;
-}
-
-/* Layout calendrier + récap */
-.bk-layout {
-  display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 1.25rem;
-  align-items: start;
-}
-
-.bk-layout__calendar {
-  min-width: 0;
-}
-
-.bk-summary {
-  position: sticky;
-  top: 5.5rem;
-  background: #FDFBFA;
-  border: 1px solid #E4E0DC;
-  border-radius: 14px;
-  padding: 1.25rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.bk-summary--active {
-  border-color: #D1A1C7;
-  box-shadow: 0 4px 20px rgba(79, 57, 66, 0.08);
-}
-
-.bk-summary--done {
-  border-color: #4F3942;
-  background: #fff;
-  text-align: center;
-}
-
-.bk-summary__label {
-  font-family: "Montserrat", sans-serif;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #D1A1C7;
-  margin: 0 0 0.5rem;
-}
-
-.bk-summary__title {
-  font-family: "Montserrat", sans-serif;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #2C1810;
-  margin: 0 0 0.4rem;
-  line-height: 1.35;
-}
-
-.bk-summary__detail {
-  font-size: 0.85rem;
-  color: #666;
-  margin: 0 0 0.75rem;
-  line-height: 1.4;
-}
-
-.bk-summary__price {
-  font-size: 0.82rem;
-  color: #888;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #F0EBE8;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.5rem;
-}
-
-.bk-summary__price-old {
-  text-decoration: line-through;
-  color: #bbb;
-}
-
-.bk-summary__price-new {
-  font-family: "Montserrat", sans-serif;
-  font-weight: 700;
-  font-size: 1rem;
-  color: #4F3942;
-}
-
-.bk-summary__badge {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: #4F3942;
-  background: #EADAF3;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-}
-
-.bk-summary__cashback {
-  font-size: 0.75rem;
-  color: #2e7d32;
-  margin: 0 0 0.75rem;
-}
-
-.bk-summary__cashback--muted {
-  color: #888;
-}
-
-.bk-summary__placeholder {
-  font-size: 0.85rem;
-  color: #aaa;
-  line-height: 1.5;
-  margin: 0;
-}
-
-.bk-summary__icon-ok {
-  color: #4F3942;
-  margin: 0.25rem auto 0.75rem;
-  display: block;
-}
-
-.bk-confirm-btn--link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  margin-top: 0.5rem;
 }
 
 .bk-grid-wrap {
@@ -948,62 +853,208 @@ onMounted(() => {
   transition: background 0.18s, border-color 0.18s, color 0.18s;
 }
 
-.bk-slot:hover {
-  background: #EADAF3;
-  border-color: #D1A1C7;
-  color: #4F3942;
-}
+.bk-slot:hover { background: #EADAF3; border-color: #D1A1C7; }
+.bk-slot.selected { background: #4F3942; border-color: #4F3942; color: #fff; }
 
-.bk-slot.selected {
-  background: #4F3942;
-  border-color: #4F3942;
-  color: #fff;
-}
-
-.bk-slot--disabled {
-  display: block;
-  padding: 0.45rem 0.2rem;
-  border: 1px solid #F0EBE8;
-  border-radius: 8px;
-  background: #fff;
-  font-family: "Montserrat", sans-serif;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #ccc;
-  text-align: center;
-  cursor: not-allowed;
-  user-select: none;
-}
-
+.bk-slot--disabled,
 .bk-slot--blocked {
   display: block;
   padding: 0.45rem 0.2rem;
-  border: 1px dashed #E4E0DC;
   border-radius: 8px;
-  background: #FAFAFA;
   font-family: "Montserrat", sans-serif;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #bbb;
   text-align: center;
   cursor: not-allowed;
   user-select: none;
 }
+
+.bk-slot--disabled { border: 1px solid #F0EBE8; background: #fff; color: #ccc; }
+.bk-slot--blocked { border: 1px dashed #E4E0DC; background: #FAFAFA; color: #bbb; }
 
 .bk-slot--gap {
   display: block;
   padding: 0.45rem 0.2rem;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
   visibility: hidden;
   pointer-events: none;
 }
 
-.bk-no-slots {
+.bk-no-slots { font-size: 0.85rem; color: #ccc; margin: 0.5rem 0; }
+
+/* Section paiement inline */
+.bk-payment__card {
+  background: #fff;
+  border: 2px solid #D1A1C7;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 8px 32px rgba(79, 57, 66, 0.1);
+  scroll-margin-top: 5rem;
+}
+
+.bk-payment__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #F0EBE8;
+}
+
+.bk-payment__step {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #D1A1C7;
+  margin: 0 0 0.25rem;
+}
+
+.bk-payment__title {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.45rem;
+  color: #2C1810;
+  margin: 0 0 0.35rem;
+}
+
+.bk-payment__sub {
+  font-size: 0.82rem;
+  color: #888;
+  margin: 0;
+}
+
+.bk-payment__back {
+  flex-shrink: 0;
+  background: #F8F5F2;
+  border: 1px solid #E4E0DC;
+  border-radius: 10px;
+  padding: 0.5rem 0.85rem;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4F3942;
+  cursor: pointer;
+}
+
+.bk-payment__recap {
+  background: #FDFBFA;
+  border: 1px solid #F0EBE8;
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 1.25rem;
+}
+
+.bk-payment__recap-label {
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #D1A1C7;
+  margin: 0 0 0.35rem;
+}
+
+.bk-payment__recap-when {
+  font-family: "Montserrat", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2C1810;
+  margin: 0 0 0.25rem;
+}
+
+.bk-payment__recap-who {
   font-size: 0.85rem;
-  color: #ccc;
-  margin: 0.5rem 0;
+  color: #666;
+  margin: 0 0 0.65rem;
+}
+
+.bk-payment__recap-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+}
+
+.bk-payment__price-old {
+  text-decoration: line-through;
+  color: #bbb;
+  font-size: 0.9rem;
+}
+
+.bk-payment__price-new {
+  font-family: "Montserrat", sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #4F3942;
+}
+
+.bk-payment__badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #4F3942;
+  background: #EADAF3;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.bk-payment__cashback {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: #2e7d32;
+}
+
+.bk-payment__login {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.bk-payment__login p { margin: 0 0 1rem; }
+
+.bk-payment__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1rem;
+  color: #888;
+  font-size: 0.88rem;
+}
+
+.bk-payment__stripe {
+  min-height: 420px;
+}
+
+.bk-payment__error {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: #c0565b;
+  text-align: center;
+}
+
+.bk-payment__retry {
+  text-align: center;
+  margin: 0.5rem 0 0;
+}
+
+.bk-payment__retry-btn {
+  background: none;
+  border: none;
+  color: #4F3942;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.bk-payment__trust {
+  margin: 1rem 0 0;
+  font-size: 0.75rem;
+  color: #aaa;
+  text-align: center;
 }
 
 .bk-confirm-btn {
@@ -1024,94 +1075,39 @@ onMounted(() => {
   transition: background 0.18s;
 }
 .bk-confirm-btn:hover:not(:disabled) { background: #3a2830; }
-.bk-confirm-btn:disabled { opacity: 0.65; cursor: not-allowed; }
 
-.bk-confirm-error {
-  margin: 0.75rem 0 0;
-  font-size: 0.82rem;
-  color: #c0565b;
+.bk-confirm-btn--link {
+  display: flex;
+  text-decoration: none;
+  margin-top: 0.5rem;
+}
+
+.bk-done {
+  background: #fff;
+  border: 1px solid #4F3942;
+  border-radius: 16px;
+  padding: 2rem;
   text-align: center;
 }
 
-/* Barre fixe mobile */
-.bk-mobile-bar {
-  display: none;
+.bk-done__icon { color: #4F3942; margin-bottom: 0.75rem; }
+.bk-done__title {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 1.5rem;
+  color: #2C1810;
+  margin: 0 0 0.5rem;
 }
+.bk-done__detail { color: #666; margin: 0 0 1.25rem; font-size: 0.9rem; }
 
 .spin { animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 768px) {
-  .bk-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .bk-summary {
-    position: static;
-    order: -1;
-  }
-
-  .bk-mobile-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 200;
-    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
-    background: #fff;
-    border-top: 1px solid #E4E0DC;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
-  }
-
-  .bk-mobile-bar__info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .bk-mobile-bar__time {
-    display: block;
-    font-family: "Montserrat", sans-serif;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: #2C1810;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .bk-mobile-bar__who {
-    display: block;
-    font-size: 0.72rem;
-    color: #888;
-  }
-
-  .bk-mobile-bar__btn {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.65rem 1.1rem;
-    background: #4F3942;
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    font-family: "Montserrat", sans-serif;
-    font-size: 0.82rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-
-  .booking-panel {
-    padding-bottom: 5rem;
-  }
-}
-
 @media (max-width: 640px) {
   .bk-grid { grid-template-columns: repeat(4, minmax(68px, 1fr)); }
-  .bk-card__head, .bk-collabs, .bk-datetime { padding-left: 1rem; padding-right: 1rem; }
+  .bk-card__head, .bk-collabs, .bk-datetime, .bk-payment__card {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .bk-payment__head { flex-direction: column; }
 }
 </style>

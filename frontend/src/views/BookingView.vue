@@ -55,6 +55,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, MapPin, Star, Loader2 } from 'lucide-vue-next'
 import BookingPanel from '@/components/BookingPanel.vue'
+import { useToast } from '@/composables/useToast'
 
 interface Service {
   _id: string
@@ -75,6 +76,7 @@ interface SalonCollaborator {
 
 const route  = useRoute()
 const router = useRouter()
+const toast  = useToast()
 
 const proId     = computed(() => String(route.params.id))
 const serviceId = computed(() => String(route.params.serviceId))
@@ -118,7 +120,13 @@ async function load () {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  if (route.query.cancelled === '1') {
+    toast.info('Paiement annulé. Vous pouvez choisir un autre créneau.')
+    router.replace({ query: {} })
+  }
+})
 </script>
 
 <style scoped>

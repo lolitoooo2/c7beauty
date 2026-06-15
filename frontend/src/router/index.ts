@@ -29,6 +29,16 @@ const router = createRouter({
       meta: { guestOnly: true, forRole: 'client' }
     },
     {
+      path: '/verify-email',
+      name: 'verify-email',
+      component: () => import('@/views/VerifyEmailView.vue')
+    },
+    {
+      path: '/verify-email/pending',
+      name: 'verify-email-pending',
+      component: () => import('@/views/VerifyEmailPendingView.vue')
+    },
+    {
       path: '/login/client',
       name: 'login-client',
       component: () => import('@/views/LoginClientView.vue'),
@@ -116,6 +126,12 @@ const router = createRouter({
       path: '/salon/:id/reserver/:serviceId',
       name: 'salon-booking',
       component: () => import('@/views/BookingView.vue')
+    },
+    {
+      path: '/salon/:id/reserver/:serviceId/succes',
+      name: 'salon-booking-success',
+      component: () => import('@/views/BookingSuccessView.vue'),
+      meta: { requiresAuth: true, role: 'client' }
     },
 
     // ── Catch all ────────────────────────────
