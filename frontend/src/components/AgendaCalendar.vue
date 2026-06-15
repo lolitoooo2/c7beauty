@@ -46,6 +46,7 @@ const emit = defineEmits<{
     clientPhone?: string
     timeLabel?: string
     endLabel?: string
+    startIso?: string
     duration?: number
     price?: number
   }]
@@ -230,6 +231,7 @@ const calendarOptions = computed<CalendarOptions>(() => {
         clientPhone   : ex.clientPhone as string | undefined,
         timeLabel     : ex.timeLabel as string | undefined,
         endLabel      : ex.endLabel as string | undefined,
+        startIso      : ex.startIso as string | undefined,
         duration      : ex.duration as number | undefined,
         price         : ex.price as number | undefined
       })

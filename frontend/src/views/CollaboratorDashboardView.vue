@@ -83,47 +83,142 @@
           <div class="collab-summary__card">
             <CalendarCheck :size="20" />
             <div>
-              <span class="collab-summary__value">—</span>
+              <span class="collab-summary__value">{{ periodBookingsCount }}</span>
               <span class="collab-summary__label">RDV {{ tabLabel }}</span>
             </div>
           </div>
-          <div class="collab-summary__card collab-summary__card--muted">
+          <div class="collab-summary__card" :class="{ 'collab-summary__card--muted': !nextBooking }">
             <Clock :size="20" />
             <div>
-              <span class="collab-summary__value">—</span>
-              <span class="collab-summary__label">Prochain créneau</span>
+              <span class="collab-summary__value">{{ nextBookingLabel }}</span>
+              <span class="collab-summary__label">Prochain rendez-vous</span>
             </div>
           </div>
         </div>
 
         <section class="collab-panel collab-panel--calendar">
           <AgendaCalendar
-            :key="activeTab"
+            v-if="activeTab === 'today'"
+            ref="agendaCalRef"
             api-path="/api/collaborator/schedule/calendar"
-            :initial-view="calendarView"
+            :pro-mode="true"
+            active-view="day"
+            @event-click="onBookingClick"
+            @range-change="onRangeChange"
           />
-          <p class="collab-rdv-hint">Les rendez-vous clients s'afficheront ici au Sprint 3.</p>
+          <AgendaCalendar
+            v-else-if="activeTab === 'week'"
+            ref="agendaCalRef"
+            api-path="/api/collaborator/schedule/calendar"
+            :pro-mode="true"
+            active-view="week"
+            @event-click="onBookingClick"
+            @range-change="onRangeChange"
+          />
+          <AgendaCalendar
+            v-else
+            ref="agendaCalRef"
+            api-path="/api/collaborator/schedule/calendar"
+            initial-view="dayGridMonth"
+            @event-click="onBookingClick"
+            @range-change="onRangeChange"
+          />
+          <p class="collab-rdv-hint">Cliquez sur un rendez-vous pour voir le détail client.</p>
         </section>
       </main>
     </div>
   </div>
+
+  <!-- Modale détail RDV -->
+  <Teleport to="body">
+    <div v-if="bookingModal.open" class="collab-modal-overlay" @click.self="bookingModal.open = false">
+      <div class="collab-modal">
+        <div class="collab-modal__head">
+          <h3>Détail du rendez-vous</h3>
+          <button type="button" @click="bookingModal.open = false">×</button>
+        </div>
+        <div class="collab-modal__body">
+          <p class="collab-modal__svc">{{ bookingModal.serviceName }}</p>
+          <p class="collab-modal__when">{{ bookingModal.timeLabel }} – {{ bookingModal.endLabel }}</p>
+          <dl class="collab-modal__list">
+            <div>
+              <dt>Client</dt>
+              <dd>{{ bookingModal.clientName || '—' }}</dd>
+            </div>
+            <div v-if="bookingModal.clientPhone">
+              <dt>Téléphone</dt>
+              <dd><a :href="`tel:${bookingModal.clientPhone}`">{{ bookingModal.clientPhone }}</a></dd>
+            </div>
+            <div v-if="bookingModal.duration">
+              <dt>Durée</dt>
+              <dd>{{ bookingModal.duration }} min</dd>
+            </div>
+            <div v-if="bookingModal.price != null">
+              <dt>Prix</dt>
+              <dd>{{ bookingModal.price.toFixed(2) }} €</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="collab-modal__foot">
+          <button
+            v-if="bookingModalIsFuture && bookingModal.bookingId"
+            type="button"
+            class="collab-modal__cancel"
+            :disabled="bookingModal.cancelLoading"
+            @click="cancelCollabBooking"
+          >
+            <Loader2 v-if="bookingModal.cancelLoading" :size="14" class="spin" />
+            Annuler le rendez-vous
+          </button>
+          <button type="button" class="collab-modal__close" @click="bookingModal.open = false">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { CalendarDays, CalendarCheck, Clock, Loader2, LogOut } from 'lucide-vue-next'
 import { useAuthStore, type CollaboratorUser } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import AgendaCalendar from '@/components/AgendaCalendar.vue'
 
+interface CollabBooking {
+  _id: string
+  start: string
+  end: string
+  serviceName: string
+  duration?: number
+  price?: number
+  client?: { firstName: string; lastName: string; phone?: string }
+}
+
 const authStore = useAuthStore()
 const router    = useRouter()
 const toast     = useToast()
 
-const collab    = computed(() => authStore.user as CollaboratorUser | null)
-const salonName = ref('Mon salon')
-const activeTab = ref<'today' | 'week' | 'month'>('week')
+const collab         = computed(() => authStore.user as CollaboratorUser | null)
+const salonName      = ref('Mon salon')
+const activeTab      = ref<'today' | 'week' | 'month'>('week')
+const collabBookings = ref<CollabBooking[]>([])
+const agendaRange    = ref({ from: '', to: '' })
+const agendaCalRef   = ref<InstanceType<typeof AgendaCalendar> | null>(null)
+
+const bookingModal = reactive({
+  open          : false,
+  bookingId     : '',
+  serviceName   : '',
+  clientName    : '',
+  clientPhone   : '',
+  timeLabel     : '',
+  endLabel      : '',
+  duration      : 0,
+  price         : null as number | null,
+  startIso      : '',
+  cancelLoading : false
+})
 
 const tabs = [
   { id: 'today' as const, label: 'Aujourd\'hui', icon: CalendarCheck },
@@ -149,11 +244,32 @@ const tabTitle = computed(() => {
   return 'Mois'
 })
 
-const calendarView = computed(() => {
-  if (activeTab.value === 'today') return 'timeGridDay' as const
-  if (activeTab.value === 'month') return 'dayGridMonth' as const
-  return 'timeGridWeek' as const
+const periodBookingsCount = computed(() => collabBookings.value.length)
+
+const nextBooking = computed(() => {
+  const now = Date.now()
+  return collabBookings.value
+    .filter(b => new Date(b.start).getTime() >= now)
+    .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())[0] || null
 })
+
+const nextBookingLabel = computed(() => {
+  if (!nextBooking.value) return '—'
+  return formatBookingTime(nextBooking.value.start)
+})
+
+const bookingModalIsFuture = computed(() => {
+  if (!bookingModal.startIso) return false
+  return new Date(bookingModal.startIso) > new Date()
+})
+
+function formatBookingTime (iso: string) {
+  return new Date(iso).toLocaleTimeString('fr-FR', {
+    timeZone : 'Europe/Paris',
+    hour     : '2-digit',
+    minute   : '2-digit'
+  })
+}
 
 async function loadProfile () {
   try {
@@ -166,6 +282,81 @@ async function loadProfile () {
     }
   } catch {
     toast.error('Impossible de charger le profil.')
+  }
+}
+
+async function fetchCollabBookings () {
+  if (!agendaRange.value.from || !agendaRange.value.to) return
+  try {
+    const params = new URLSearchParams({
+      from : agendaRange.value.from,
+      to   : agendaRange.value.to
+    })
+    const res = await fetch(`/api/collaborator/bookings?${params}`, {
+      headers: { Authorization: `Bearer ${authStore.token}` }
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    collabBookings.value = data.data || []
+  } catch {
+    toast.error('Impossible de charger les rendez-vous.')
+  }
+}
+
+function onRangeChange (payload: { from: string; to: string }) {
+  agendaRange.value = payload
+  fetchCollabBookings()
+}
+
+function onBookingClick (payload: {
+  type?: string
+  bookingId?: string
+  serviceName?: string
+  clientName?: string
+  clientPhone?: string
+  timeLabel?: string
+  endLabel?: string
+  startIso?: string
+  duration?: number
+  price?: number
+}) {
+  if (payload.type !== 'booking' || !payload.bookingId) return
+  Object.assign(bookingModal, {
+    open          : true,
+    bookingId     : payload.bookingId,
+    serviceName   : payload.serviceName || 'Rendez-vous',
+    clientName    : payload.clientName || '',
+    clientPhone   : payload.clientPhone || '',
+    timeLabel     : payload.timeLabel || '',
+    endLabel      : payload.endLabel || '',
+    duration      : payload.duration || 0,
+    price         : payload.price ?? null,
+    startIso      : payload.startIso || '',
+    cancelLoading : false
+  })
+}
+
+async function cancelCollabBooking () {
+  if (!bookingModal.bookingId || !bookingModalIsFuture.value) return
+  if (!confirm('Annuler ce rendez-vous ?')) return
+
+  bookingModal.cancelLoading = true
+  try {
+    const res = await fetch(`/api/collaborator/bookings/${bookingModal.bookingId}/cancel`, {
+      method  : 'PATCH',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Erreur')
+
+    toast.success('Rendez-vous annulé.')
+    bookingModal.open = false
+    fetchCollabBookings()
+    agendaCalRef.value?.refetch?.()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Impossible d\'annuler.')
+  } finally {
+    bookingModal.cancelLoading = false
   }
 }
 
@@ -558,6 +749,111 @@ onMounted(loadProfile)
   .collab-rdv-hint {
     margin: 0.75rem 0 0; font-size: 0.78rem; color: #aaa; text-align: center;
   }
+}
+
+.collab-modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(44, 24, 16, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+
+.collab-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(79, 57, 66, 0.18);
+  overflow: hidden;
+}
+
+.collab-modal__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #F0EBE8;
+}
+
+.collab-modal__head h3 {
+  margin: 0;
+  font-family: "Montserrat", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #4F3942;
+}
+
+.collab-modal__head button {
+  border: none; background: none; font-size: 1.5rem; line-height: 1;
+  color: #999; cursor: pointer;
+}
+
+.collab-modal__body { padding: 1.25rem; }
+
+.collab-modal__svc {
+  margin: 0 0 0.35rem;
+  font-family: "Montserrat", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #4F3942;
+}
+
+.collab-modal__when {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  color: #888;
+}
+
+.collab-modal__list {
+  margin: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.collab-modal__list dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #aaa;
+}
+
+.collab-modal__list dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+  color: #4F3942;
+}
+
+.collab-modal__list a { color: #4F3942; }
+
+.collab-modal__foot {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding: 0.85rem 1.25rem 1.15rem;
+  border-top: 1px solid #F0EBE8;
+}
+
+.collab-modal__cancel {
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+  border: 1px solid #e8b4b8;
+  background: #fff5f5;
+  color: #c0565b;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.collab-modal__close {
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+  border: none;
+  background: #4F3942;
+  color: #fff;
+  font-family: "Montserrat", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 @media (min-width: 1100px) {

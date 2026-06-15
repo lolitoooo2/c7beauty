@@ -247,18 +247,44 @@ exports.getAgenda = async (req, res) => {
     if (!collaborator) return res.status(404).json({ message: 'Collaborateur introuvable.' })
 
     const { from, to } = req.query
-    if (from && to) {
-      const { buildCalendarEvents } = require('../utils/scheduleHelpers')
-      const events = await buildCalendarEvents({
+    if (!from || !to) {
+      return res.status(400).json({ message: 'Paramètres from et to requis.' })
+    }
+
+    const { buildCalendarEvents } = require('../utils/scheduleHelpers')
+    const Booking = require('../models/Booking')
+
+    const [events, bookings] = await Promise.all([
+      buildCalendarEvents({
         proId          : collaborator.proId,
         collaboratorId : collaborator._id,
         fromStr        : from,
         toStr          : to
+      }),
+      Booking.find({
+        collaboratorId : collaborator._id,
+        status         : 'confirmed',
+        start          : { $gte: new Date(from), $lte: new Date(to + 'T23:59:59') }
       })
-      return res.json({ data: events, bookings: [] })
-    }
+        .sort({ start: 1 })
+        .populate('clientId', 'firstName lastName phone')
+        .lean()
+    ])
 
-    res.json({ data: [], bookings: [], message: 'Agenda disponible — réservations au Sprint 3.' })
+    res.json({
+      data     : events,
+      bookings : bookings.map(b => ({
+        _id         : b._id,
+        start       : b.start,
+        end         : b.end,
+        serviceName : b.serviceName,
+        duration    : b.duration,
+        price       : b.price,
+        client      : b.clientId
+          ? { firstName: b.clientId.firstName, lastName: b.clientId.lastName, phone: b.clientId.phone }
+          : null
+      }))
+    })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })
   }

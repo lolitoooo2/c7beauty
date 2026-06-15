@@ -53,6 +53,8 @@ router.delete('/schedule/constraints/:id',    schedule.removeConstraint)
 
 const booking = require('../controllers/bookingController')
 router.get('/bookings', booking.listForPro)
+router.get('/stats', booking.getProStats)
+router.patch('/bookings/:id/cancel', booking.cancelByPro)
 
 // Photos du salon
 router.post('/photos',             shopsUpload.single('photo'), addShopPhoto)

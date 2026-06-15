@@ -70,11 +70,38 @@
           <div class="summary-card summary-card--accent">
             <div class="summary-card__icon"><CalendarCheck :size="22" /></div>
             <div class="summary-card__body">
-              <span class="summary-card__value">{{ pro?.stats?.reservationCount ?? 0 }}</span>
-              <span class="summary-card__label">Réservations reçues</span>
+              <span class="summary-card__value">{{ proStatsLoading ? '…' : proStats.todayCount }}</span>
+              <span class="summary-card__label">RDV aujourd'hui</span>
             </div>
           </div>
           <div class="summary-card">
+            <div class="summary-card__icon"><CalendarDays :size="22" /></div>
+            <div class="summary-card__body">
+              <span class="summary-card__value">{{ proStatsLoading ? '…' : proStats.weekCount }}</span>
+              <span class="summary-card__label">RDV cette semaine</span>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-card__icon"><TrendingUp :size="22" /></div>
+            <div class="summary-card__body">
+              <span class="summary-card__value">
+                {{ proStatsLoading ? '…' : proStats.revenueWeek.toFixed(0) }}
+                <span class="stat-unit">€</span>
+              </span>
+              <span class="summary-card__label">CA prévu (semaine)</span>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-card__icon"><Clock :size="22" /></div>
+            <div class="summary-card__body">
+              <span class="summary-card__value">{{ proStatsLoading ? '…' : proStats.totalConfirmed }}</span>
+              <span class="summary-card__label">Réservations confirmées</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="cards-grid cards-grid--secondary">
+          <div class="summary-card summary-card--muted">
             <div class="summary-card__icon"><Star :size="22" /></div>
             <div class="summary-card__body">
               <span class="summary-card__value">
@@ -84,18 +111,11 @@
               <span class="summary-card__label">Note moyenne</span>
             </div>
           </div>
-          <div class="summary-card">
+          <div class="summary-card summary-card--muted">
             <div class="summary-card__icon"><MessageSquare :size="22" /></div>
             <div class="summary-card__body">
               <span class="summary-card__value">{{ pro?.stats?.reviewCount ?? 0 }}</span>
               <span class="summary-card__label">Avis clients</span>
-            </div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-card__icon"><TrendingUp :size="22" /></div>
-            <div class="summary-card__body">
-              <span class="summary-card__value">{{ (pro?.totalEarnings ?? 0).toFixed(0) }} €</span>
-              <span class="summary-card__label">Revenus totaux</span>
             </div>
           </div>
         </div>
@@ -109,7 +129,7 @@
         </div>
 
         <h2 class="section-title">Prochaine réservation</h2>
-        <div v-if="proBookingLoading" class="svc-loading">
+        <div v-if="proStatsLoading" class="svc-loading">
           <Loader2 :size="20" class="spin" />
         </div>
         <div v-else-if="nextProBooking" class="booking-preview">
@@ -137,6 +157,38 @@
               {{ c.firstName }} {{ c.lastName }}
             </option>
           </select>
+        </div>
+        <div class="pro-agenda-stats">
+          <div class="pro-agenda-stats__card">
+            <CalendarCheck :size="18" />
+            <div>
+              <span class="pro-agenda-stats__value">{{ proStatsLoading ? '…' : proStats.todayCount }}</span>
+              <span class="pro-agenda-stats__label">Aujourd'hui</span>
+            </div>
+          </div>
+          <div class="pro-agenda-stats__card">
+            <CalendarDays :size="18" />
+            <div>
+              <span class="pro-agenda-stats__value">{{ proStatsLoading ? '…' : proStats.weekCount }}</span>
+              <span class="pro-agenda-stats__label">Cette semaine</span>
+            </div>
+          </div>
+          <div class="pro-agenda-stats__card">
+            <TrendingUp :size="18" />
+            <div>
+              <span class="pro-agenda-stats__value">
+                {{ proStatsLoading ? '…' : proStats.revenueWeek.toFixed(0) }} €
+              </span>
+              <span class="pro-agenda-stats__label">CA semaine</span>
+            </div>
+          </div>
+          <div class="pro-agenda-stats__card">
+            <Clock :size="18" />
+            <div>
+              <span class="pro-agenda-stats__value">{{ agendaBookingsLoading ? '…' : agendaBookings.length }}</span>
+              <span class="pro-agenda-stats__label">RDV période affichée</span>
+            </div>
+          </div>
         </div>
         <div class="agenda-toolbar">
           <div class="agenda-view-tabs">
@@ -844,6 +896,16 @@
           </dl>
         </div>
         <div class="svc-modal__footer">
+          <button
+            v-if="bookingDetailIsFuture && bookingDetailModal.bookingId"
+            type="button"
+            class="btn-cancel danger-text"
+            :disabled="bookingDetailModal.cancelLoading"
+            @click="cancelProBooking"
+          >
+            <Loader2 v-if="bookingDetailModal.cancelLoading" :size="14" class="spin" />
+            Annuler le rendez-vous
+          </button>
           <button type="button" class="btn-primary" @click="bookingDetailModal.open = false">Fermer</button>
         </div>
       </div>
@@ -1513,31 +1575,69 @@ function copyText (text: string) {
 }
 
 onMounted(async () => {
-  fetchNextProBooking()
+  fetchProStats()
   await fetchCategories()
   await syncPhotos()
   fetchServices()
   fetchCollaborators()
 })
 
-const proBookingLoading = ref(false)
-const nextProBooking    = ref<{
-  start: string
-  serviceName: string
-  client?: { firstName: string; lastName: string; phone?: string }
-} | null>(null)
+interface ProStats {
+  todayCount: number
+  weekCount: number
+  monthCount: number
+  totalConfirmed: number
+  totalCancelled: number
+  revenueToday: number
+  revenueWeek: number
+  revenueMonth: number
+  nextBooking: {
+    start: string
+    serviceName: string
+    client?: { firstName: string; lastName: string; phone?: string }
+  } | null
+}
 
-async function fetchNextProBooking () {
-  proBookingLoading.value = true
+const proStatsLoading = ref(false)
+const proStats = ref<ProStats>({
+  todayCount     : 0,
+  weekCount      : 0,
+  monthCount     : 0,
+  totalConfirmed : 0,
+  totalCancelled : 0,
+  revenueToday   : 0,
+  revenueWeek    : 0,
+  revenueMonth   : 0,
+  nextBooking    : null
+})
+
+const nextProBooking = computed(() => proStats.value.nextBooking)
+
+async function fetchProStats () {
+  proStatsLoading.value = true
   try {
-    const res = await fetch('/api/pro/bookings?upcoming=1&limit=1', {
+    const params = new URLSearchParams()
+    if (activeSection.value === 'agenda' && agendaCollaboratorId.value) {
+      params.set('collaboratorId', agendaCollaboratorId.value)
+    }
+    const res = await fetch(`/api/pro/stats?${params}`, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     })
     if (!res.ok) return
     const data = await res.json()
-    nextProBooking.value = data.data?.[0] || null
+    proStats.value = {
+      todayCount     : data.todayCount ?? 0,
+      weekCount      : data.weekCount ?? 0,
+      monthCount     : data.monthCount ?? 0,
+      totalConfirmed : data.totalConfirmed ?? 0,
+      totalCancelled : data.totalCancelled ?? 0,
+      revenueToday   : data.revenueToday ?? 0,
+      revenueWeek    : data.revenueWeek ?? 0,
+      revenueMonth   : data.revenueMonth ?? 0,
+      nextBooking    : data.nextBooking ?? null
+    }
   } catch { /* ignore */ }
-  finally { proBookingLoading.value = false }
+  finally { proStatsLoading.value = false }
 }
 
 function formatProBookingDate (iso: string) {
@@ -1569,13 +1669,16 @@ interface AgendaBooking {
 
 const bookingDetailModal = reactive({
   open         : false,
+  bookingId    : '',
   serviceName  : '',
   clientName   : '',
   clientPhone  : '',
   timeLabel    : '',
   endLabel     : '',
   duration     : 0,
-  price        : null as number | null
+  price        : null as number | null,
+  startIso     : '',
+  cancelLoading: false
 })
 
 const agendaBookingsGrouped = computed(() => {
@@ -1608,6 +1711,7 @@ function formatBookingTimeRange (start: string, end: string) {
 }
 
 function openBookingDetailFromEvent (payload: {
+  bookingId?: string
   serviceName?: string
   clientName?: string
   clientPhone?: string
@@ -1615,29 +1719,65 @@ function openBookingDetailFromEvent (payload: {
   endLabel?: string
   duration?: number
   price?: number
+  startIso?: string
 }) {
   Object.assign(bookingDetailModal, {
-    open        : true,
-    serviceName : payload.serviceName || 'Rendez-vous',
-    clientName  : payload.clientName || '',
-    clientPhone : payload.clientPhone || '',
-    timeLabel   : payload.timeLabel || '',
-    endLabel    : payload.endLabel || '',
-    duration    : payload.duration || 0,
-    price       : payload.price ?? null
+    open         : true,
+    bookingId    : payload.bookingId || '',
+    serviceName  : payload.serviceName || 'Rendez-vous',
+    clientName   : payload.clientName || '',
+    clientPhone  : payload.clientPhone || '',
+    timeLabel    : payload.timeLabel || '',
+    endLabel     : payload.endLabel || '',
+    duration     : payload.duration || 0,
+    price        : payload.price ?? null,
+    startIso     : payload.startIso || '',
+    cancelLoading: false
   })
 }
 
 function openBookingDetail (b: AgendaBooking) {
   openBookingDetailFromEvent({
+    bookingId   : b._id,
     serviceName : b.serviceName,
     clientName  : b.client ? `${b.client.firstName} ${b.client.lastName}`.trim() : '',
     clientPhone : b.client?.phone || '',
     timeLabel   : formatBookingTime(b.start),
     endLabel    : formatBookingTime(b.end),
     duration    : b.duration,
-    price       : b.price
+    price       : b.price,
+    startIso    : b.start
   })
+}
+
+const bookingDetailIsFuture = computed(() => {
+  if (!bookingDetailModal.startIso) return false
+  return new Date(bookingDetailModal.startIso) > new Date()
+})
+
+async function cancelProBooking () {
+  if (!bookingDetailModal.bookingId || !bookingDetailIsFuture.value) return
+  if (!confirm('Annuler ce rendez-vous ? Le client en sera informé par vos soins.')) return
+
+  bookingDetailModal.cancelLoading = true
+  try {
+    const res = await fetch(`/api/pro/bookings/${bookingDetailModal.bookingId}/cancel`, {
+      method  : 'PATCH',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message || 'Erreur')
+
+    toast.success('Rendez-vous annulé.')
+    bookingDetailModal.open = false
+    fetchAgendaBookings()
+    fetchProStats()
+    agendaCalRef.value?.refetch?.()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Impossible d\'annuler.')
+  } finally {
+    bookingDetailModal.cancelLoading = false
+  }
 }
 
 async function fetchAgendaBookings () {
@@ -1665,6 +1805,7 @@ function onAgendaRangeChange ({ from, to }: { from: string; to: string }) {
 }
 
 watch(agendaCollaboratorId, () => {
+  fetchProStats()
   fetchAgendaBookings()
   agendaCalRef.value?.refetch?.()
 })
@@ -1687,7 +1828,7 @@ watch(agendaViewMode, (mode) => {
 watch(activeSection, (section) => {
   if (section === 'team') fetchCollaborators()
   if (section === 'agenda' || section === 'hours') fetchCollaborators()
-  if (section === 'home') fetchNextProBooking()
+  if (section === 'home' || section === 'agenda') fetchProStats()
   if (section === 'agenda' && agendaRange.value.from) fetchAgendaBookings()
 })
 
@@ -1855,6 +1996,7 @@ function onAgendaEventClick (payload: {
   clientPhone?: string
   timeLabel?: string
   endLabel?: string
+  startIso?: string
   duration?: number
   price?: number
 }) {
@@ -2320,6 +2462,54 @@ body { margin: 0; }
 }
 .stat-unit { font-size: 0.7rem; font-weight: 400; opacity: 0.6; }
 .summary-card__label { font-family: "Montserrat", sans-serif; font-size: 0.72rem; color: #aaa; }
+
+.cards-grid--secondary {
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
+.summary-card--muted {
+  opacity: 0.85;
+  background: #faf8f6;
+}
+
+.summary-card--muted .summary-card__icon {
+  background: #f0ebe8;
+  color: #aaa;
+}
+
+.pro-agenda-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pro-agenda-stats__card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background: #fff;
+  border: 1px solid #E4E0DC;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  color: #4F3942;
+}
+
+.pro-agenda-stats__value {
+  display: block;
+  font-family: "Montserrat", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.pro-agenda-stats__label {
+  display: block;
+  font-size: 0.68rem;
+  color: #888;
+  margin-top: 0.1rem;
+}
 
 /* ── Actions ── */
 .actions-grid {

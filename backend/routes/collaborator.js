@@ -12,4 +12,8 @@ router.get('/me',              c.getMe)
 router.get('/agenda',          c.getAgenda)
 router.get('/schedule/calendar', schedule.getCollaboratorCalendar)
 
+const booking = require('../controllers/bookingController')
+router.get('/bookings',              booking.listForCollaborator)
+router.patch('/bookings/:id/cancel', booking.cancelByCollaborator)
+
 module.exports = router

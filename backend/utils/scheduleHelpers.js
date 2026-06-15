@@ -707,7 +707,8 @@ async function buildCalendarEvents ({ proId, collaboratorId, fromStr, toStr }) {
         duration    : b.duration,
         price       : b.price,
         timeLabel,
-        endLabel
+        endLabel,
+        startIso    : b.start.toISOString()
       }
     })
   }

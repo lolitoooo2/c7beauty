@@ -433,7 +433,12 @@ exports.getCollaboratorCalendar = async (req, res) => {
       toStr          : to
     })
 
-    res.json({ data: events })
+    const bounds = await computeCalendarDisplayBounds(
+      collaborator.proId,
+      collaborator._id
+    )
+
+    res.json({ data: events, bounds })
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur.' })
   }

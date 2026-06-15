@@ -10,6 +10,7 @@ const {
   HOLD_MINUTES
 } = require('../utils/bookingHelpers')
 const { dateAtTime, computeAvailableSlots } = require('../utils/scheduleHelpers')
+const { getPeriodBoundsParis } = require('../utils/timezoneHelpers')
 
 function parseSlotTimes (dateStr, startTime, duration) {
   const start = dateAtTime(dateStr, startTime)
@@ -34,10 +35,14 @@ async function validateSlotStillInGrid ({
 }
 
 function formatBooking (b) {
+  const client = b.clientId && typeof b.clientId === 'object'
+    ? { _id: b.clientId._id, firstName: b.clientId.firstName, lastName: b.clientId.lastName, phone: b.clientId.phone, email: b.clientId.email }
+    : undefined
+
   return {
     _id            : b._id,
     proId          : b.proId,
-    clientId       : b.clientId,
+    clientId       : typeof b.clientId === 'object' ? b.clientId?._id : b.clientId,
     collaboratorId : b.collaboratorId,
     serviceId      : b.serviceId,
     start          : b.start,
@@ -48,6 +53,7 @@ function formatBooking (b) {
     price          : b.price,
     cancelledAt    : b.cancelledAt,
     createdAt      : b.createdAt,
+    client,
     pro            : b.proId && typeof b.proId === 'object'
       ? { _id: b.proId._id, salonName: b.proId.salonName, address: b.proId.address, city: b.proId.city, postalCode: b.proId.postalCode }
       : undefined,
@@ -55,6 +61,19 @@ function formatBooking (b) {
       ? { _id: b.collaboratorId._id, firstName: b.collaboratorId.firstName, lastName: b.collaboratorId.lastName, photo: b.collaboratorId.photo }
       : undefined
   }
+}
+
+async function cancelBookingById ({ booking, cancelledBy }) {
+  if (booking.start <= new Date()) {
+    const err = new Error('Impossible d\'annuler un rendez-vous passé ou en cours.')
+    err.status = 400
+    throw err
+  }
+  booking.status      = 'cancelled'
+  booking.cancelledAt = new Date()
+  booking.cancelledBy = cancelledBy
+  await booking.save()
+  return booking
 }
 
 // ── POST /api/bookings/hold ───────────────────────────
@@ -231,14 +250,7 @@ exports.cancelByClient = async (req, res) => {
 
     if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
 
-    if (booking.start <= new Date()) {
-      return res.status(400).json({ message: 'Impossible d\'annuler un rendez-vous passé ou en cours.' })
-    }
-
-    booking.status      = 'cancelled'
-    booking.cancelledAt = new Date()
-    booking.cancelledBy = 'client'
-    await booking.save()
+    await cancelBookingById({ booking, cancelledBy: 'client' })
 
     res.json({ message: 'Rendez-vous annulé.', booking: formatBooking(booking.toObject()) })
   } catch (err) {
@@ -271,15 +283,159 @@ exports.listForPro = async (req, res) => {
       .lean()
 
     res.json({
-      data: bookings.map(b => ({
-        ...formatBooking(b),
-        client: b.clientId && typeof b.clientId === 'object'
-          ? { firstName: b.clientId.firstName, lastName: b.clientId.lastName, phone: b.clientId.phone, email: b.clientId.email }
-          : null
-      }))
+      data: bookings.map(b => formatBooking(b))
     })
   } catch (err) {
     console.error('[booking.listForPro]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── PATCH /api/pro/bookings/:id/cancel ──────────────
+exports.cancelByPro = async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id    : req.params.id,
+      proId  : req.userId,
+      status : 'confirmed'
+    })
+
+    if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
+
+    await cancelBookingById({ booking, cancelledBy: 'pro' })
+
+    res.json({ message: 'Rendez-vous annulé.', booking: formatBooking(booking.toObject()) })
+  } catch (err) {
+    console.error('[booking.cancelByPro]', err)
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── GET /api/collaborator/bookings ────────────────────
+exports.listForCollaborator = async (req, res) => {
+  try {
+    const filter = { collaboratorId: req.userId, status: 'confirmed' }
+    const now    = new Date()
+
+    if (req.query.from || req.query.to) {
+      filter.start = {}
+      if (req.query.from) filter.start.$gte = new Date(req.query.from)
+      if (req.query.to) filter.start.$lte = new Date(req.query.to + 'T23:59:59')
+    } else if (req.query.upcoming === '1') {
+      filter.start = { $gte: now }
+    }
+
+    const bookings = await Booking.find(filter)
+      .sort({ start: 1 })
+      .limit(Number(req.query.limit) || 100)
+      .populate('clientId', 'firstName lastName phone email')
+      .lean()
+
+    res.json({ data: bookings.map(formatBooking) })
+  } catch (err) {
+    console.error('[booking.listForCollaborator]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── PATCH /api/collaborator/bookings/:id/cancel ───────
+exports.cancelByCollaborator = async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id            : req.params.id,
+      collaboratorId : req.userId,
+      status         : 'confirmed'
+    })
+
+    if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
+
+    await cancelBookingById({ booking, cancelledBy: 'collaborator' })
+
+    res.json({ message: 'Rendez-vous annulé.', booking: formatBooking(booking.toObject()) })
+  } catch (err) {
+    console.error('[booking.cancelByCollaborator]', err)
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── GET /api/pro/stats ────────────────────────────────
+exports.getProStats = async (req, res) => {
+  try {
+    const proId = req.userId
+    const base  = { proId, status: 'confirmed' }
+    if (req.query.collaboratorId) base.collaboratorId = req.query.collaboratorId
+
+    const dayBounds   = getPeriodBoundsParis('day')
+    const weekBounds  = getPeriodBoundsParis('week')
+    const monthBounds = getPeriodBoundsParis('month')
+
+    const inRange = (bounds) => ({
+      start: { $gte: bounds.start, $lt: bounds.end }
+    })
+
+    const [
+      todayCount,
+      weekCount,
+      monthCount,
+      totalConfirmed,
+      totalCancelled,
+      revenueToday,
+      revenueWeek,
+      revenueMonth,
+      nextBooking
+    ] = await Promise.all([
+      Booking.countDocuments({ ...base, ...inRange(dayBounds) }),
+      Booking.countDocuments({ ...base, ...inRange(weekBounds) }),
+      Booking.countDocuments({ ...base, ...inRange(monthBounds) }),
+      Booking.countDocuments({ ...base }),
+      Booking.countDocuments({ proId, status: 'cancelled', ...(base.collaboratorId ? { collaboratorId: base.collaboratorId } : {}) }),
+      Booking.aggregate([
+        { $match: { ...base, start: { $gte: dayBounds.start, $lt: dayBounds.end } } },
+        { $group: { _id: null, total: { $sum: '$price' } } }
+      ]),
+      Booking.aggregate([
+        { $match: { ...base, start: { $gte: weekBounds.start, $lt: weekBounds.end } } },
+        { $group: { _id: null, total: { $sum: '$price' } } }
+      ]),
+      Booking.aggregate([
+        { $match: { ...base, start: { $gte: monthBounds.start, $lt: monthBounds.end } } },
+        { $group: { _id: null, total: { $sum: '$price' } } }
+      ]),
+      Booking.findOne({ ...base, start: { $gte: new Date() } })
+        .sort({ start: 1 })
+        .populate('clientId', 'firstName lastName phone')
+        .lean()
+    ])
+
+    res.json({
+      todayCount,
+      weekCount,
+      monthCount,
+      totalConfirmed,
+      totalCancelled,
+      revenueToday  : revenueToday[0]?.total ?? 0,
+      revenueWeek   : revenueWeek[0]?.total ?? 0,
+      revenueMonth  : revenueMonth[0]?.total ?? 0,
+      nextBooking   : nextBooking
+        ? {
+            _id         : nextBooking._id,
+            start       : nextBooking.start,
+            end         : nextBooking.end,
+            serviceName : nextBooking.serviceName,
+            duration    : nextBooking.duration,
+            price       : nextBooking.price,
+            client      : nextBooking.clientId
+              ? {
+                  firstName : nextBooking.clientId.firstName,
+                  lastName  : nextBooking.clientId.lastName,
+                  phone     : nextBooking.clientId.phone
+                }
+              : null
+          }
+        : null
+    })
+  } catch (err) {
+    console.error('[booking.getProStats]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
   }
 }
