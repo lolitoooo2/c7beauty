@@ -29,6 +29,8 @@ services:
       - ./backend/.env
     environment:
       NODE_ENV: production
+      # Prioritaire sur backend/.env — liens emails (vérif, confirmation RDV) et redirects Stripe
+      FRONTEND_URL: https://c7beauty.fr
     depends_on:
       - mongo
     restart: unless-stopped
