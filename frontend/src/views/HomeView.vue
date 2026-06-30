@@ -176,7 +176,7 @@ const proLink = computed(() => {
 const proLinkLabel = computed(() => {
   if (authStore.isCollaborator) return 'Mon agenda'
   if (authStore.isPro) return 'Espace Pro'
-  return 'Devenir Pro'
+  return 'Espace Pro'
 })
 const isClient = computed(() => authStore.isClient)
 const scrolled = ref(false)
