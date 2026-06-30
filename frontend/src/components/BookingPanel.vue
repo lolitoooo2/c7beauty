@@ -153,6 +153,10 @@
               <span class="bk-payment__price-new">{{ service.name }} · {{ displayPrice.toFixed(2) }} €</span>
             </template>
           </div>
+          <p v-if="depositPercent < 100" class="bk-payment__deposit">
+            Acompte {{ depositPercent }} % : <strong>{{ depositAmount.toFixed(2) }} €</strong>
+            <span class="bk-payment__deposit-total">(sur {{ displayPrice.toFixed(2) }} €)</span>
+          </p>
           <p v-if="loyaltyPreview?.cashbackEarn" class="bk-payment__cashback">
             +{{ loyaltyPreview.cashbackEarn.toFixed(2) }} € cashback après paiement
           </p>
@@ -279,10 +283,15 @@ interface LoyaltyPreview {
 }
 
 const loyaltyPreview = ref<LoyaltyPreview | null>(null)
+const depositPercent = ref(20)
 const HOLD_STORAGE_KEY = 'c7_booking_hold'
 
 const displayPrice = computed(() =>
   loyaltyPreview.value?.finalPrice ?? props.service.price
+)
+
+const depositAmount = computed(() =>
+  Math.round(displayPrice.value * depositPercent.value / 100 * 100) / 100
 )
 
 const eligibleCollaborators = computed(() =>
@@ -577,10 +586,25 @@ onBeforeUnmount(() => {
   teardownCheckout()
 })
 
+async function fetchDepositSettings () {
+  try {
+    const res = await fetch('/api/settings')
+    if (res.ok) {
+      const data = await res.json()
+      if (typeof data.depositPercent === 'number') {
+        depositPercent.value = data.depositPercent
+      }
+    }
+  } catch {
+    /* valeur par défaut 20 % */
+  }
+}
+
 onMounted(() => {
   selectedCollabId.value = ANY_COLLAB
   fetchWeek()
   fetchLoyaltyPreview()
+  fetchDepositSettings()
 })
 </script>
 
@@ -996,6 +1020,17 @@ onMounted(() => {
   background: #EADAF3;
   padding: 0.15rem 0.45rem;
   border-radius: 999px;
+}
+
+.bk-payment__deposit {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+  color: #4F3942;
+}
+
+.bk-payment__deposit-total {
+  color: #888;
+  font-size: 0.82rem;
 }
 
 .bk-payment__cashback {

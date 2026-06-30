@@ -4,12 +4,17 @@ const auth    = require('../middleware/auth')
 const { requireRole } = require('../middleware/auth')
 const c  = require('../controllers/adminController')
 const cc = require('../controllers/categoryController')
+const sc = require('../controllers/settingsController')
 
 router.use(auth)
 router.use(requireRole('admin'))
 
 // Stats
 router.get('/stats',              c.getStats)
+
+// Paramètres plateforme
+router.get('/settings',           sc.getAdminSettings)
+router.put('/settings',           sc.updateAdminSettings)
 
 // Pros CRUD
 router.get('/pros',               c.getPros)

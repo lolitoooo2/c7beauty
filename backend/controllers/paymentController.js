@@ -13,6 +13,10 @@ const {
   computeCommission,
   eurosToCents
 } = require('../utils/stripeHelpers')
+const {
+  getPlatformSettings,
+  computeDepositAmount
+} = require('../utils/platformSettings')
 
 function checkoutPayload (session) {
   return {
@@ -36,6 +40,8 @@ function formatBookingFromPayment (booking) {
     serviceName    : booking.serviceName,
     duration       : booking.duration,
     price          : booking.price,
+    depositPercent : booking.depositPercent ?? null,
+    depositAmount  : booking.depositAmount ?? null,
     originalPrice  : booking.originalPrice,
     discountPercent: booking.discountPercent,
     cashbackEarned : booking.cashbackEarned,
@@ -112,7 +118,11 @@ exports.createCheckout = async (req, res) => {
     const { originalPrice, finalPrice, halfPriceApplied, discountPercent } =
       computeBookingPrice(client, service.price)
 
-    if (finalPrice < 0.50) {
+    const settings = await getPlatformSettings()
+    const depositPercent = settings.depositPercent
+    const depositAmount  = computeDepositAmount(finalPrice, depositPercent)
+
+    if (depositAmount < 0.50) {
       return res.status(400).json({ message: 'Montant minimum de paiement : 0,50 €.' })
     }
 
@@ -141,8 +151,8 @@ exports.createCheckout = async (req, res) => {
       }
     }
 
-    const { platformCommission, proShare } = computeCommission(finalPrice)
-    const amountCents = eurosToCents(finalPrice)
+    const { platformCommission, proShare } = computeCommission(depositAmount)
+    const amountCents = eurosToCents(depositAmount)
     const frontendUrl = getFrontendUrl()
 
     const payment = await Payment.create({
@@ -151,8 +161,10 @@ exports.createCheckout = async (req, res) => {
       proId          : hold.proId,
       serviceId      : hold.serviceId,
       stripeSessionId: `pending_${holdId}_${Date.now()}`,
-      amount         : finalPrice,
+      amount         : depositAmount,
       amountCents,
+      totalPrice     : finalPrice,
+      depositPercent,
       originalPrice,
       discountPercent,
       platformCommission,
@@ -172,7 +184,7 @@ exports.createCheckout = async (req, res) => {
           unit_amount  : amountCents,
           product_data : {
             name        : service.name,
-            description : `${pro.salonName} — rendez-vous beauté`
+            description : `${pro.salonName} — acompte ${depositPercent} % (${depositAmount.toFixed(2)} €)`
           }
         }
       }],

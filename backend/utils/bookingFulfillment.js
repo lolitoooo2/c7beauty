@@ -8,6 +8,10 @@ const {
   computeBookingPrice,
   applyLoyaltyAfterBooking
 } = require('./loyaltyHelpers')
+const {
+  getPlatformSettings,
+  computeDepositAmount
+} = require('./platformSettings')
 const { ensureBookingConfirmationEmailSent } = require('./bookingEmailHelpers')
 
 async function loadPopulatedBooking (bookingId) {
@@ -114,6 +118,29 @@ async function fulfillHoldToBooking ({
   const { originalPrice, finalPrice, halfPriceApplied, discountPercent } =
     computeBookingPrice(client, service.price)
 
+  let depositPercent
+  let depositAmount
+
+  if (paymentId) {
+    const paymentDoc = await Payment.findById(paymentId)
+    if (paymentDoc) {
+      depositPercent = paymentDoc.depositPercent
+      depositAmount  = paymentDoc.amount
+    }
+  } else if (stripeSessionId) {
+    const paymentDoc = await Payment.findOne({ stripeSessionId })
+    if (paymentDoc) {
+      depositPercent = paymentDoc.depositPercent
+      depositAmount  = paymentDoc.amount
+    }
+  }
+
+  if (depositPercent == null) {
+    const settings = await getPlatformSettings()
+    depositPercent = settings.depositPercent
+    depositAmount  = computeDepositAmount(finalPrice, depositPercent)
+  }
+
   const booking = await Booking.create({
     proId          : hold.proId,
     clientId,
@@ -125,6 +152,8 @@ async function fulfillHoldToBooking ({
     serviceName    : service.name,
     duration       : service.duration,
     price          : finalPrice,
+    depositPercent,
+    depositAmount,
     originalPrice,
     discountPercent,
     cashbackEarned : 0

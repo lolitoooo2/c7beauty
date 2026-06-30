@@ -57,6 +57,8 @@ function formatBooking (b) {
     serviceName    : b.serviceName,
     duration       : b.duration,
     price          : b.price,
+    depositPercent : b.depositPercent ?? null,
+    depositAmount  : b.depositAmount ?? null,
     cancelledAt    : b.cancelledAt,
     createdAt      : b.createdAt,
     client,

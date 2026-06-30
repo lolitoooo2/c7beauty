@@ -338,6 +338,49 @@
         <Pagination :page="emails.page" :pages="emails.pages" @change="p => { emails.page = p; fetchEmailLogs() }" />
       </section>
 
+      <!-- ── PARAMÈTRES ──────────────────────────────── -->
+      <section v-else-if="section === 'settings'" class="section-content">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <h2 class="section-heading">Paramètres de la plateforme</h2>
+          </div>
+        </div>
+
+        <div v-if="platformSettings.loading" class="loading-row">
+          <div class="spinner-sm"></div> Chargement…
+        </div>
+
+        <form v-else class="settings-card" @submit.prevent="savePlatformSettings">
+          <div class="settings-field">
+            <label for="depositPercent">Pourcentage d'acompte</label>
+            <div class="settings-input-row">
+              <input
+                id="depositPercent"
+                v-model.number="platformSettings.depositPercent"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                required
+              />
+              <span class="settings-suffix">%</span>
+            </div>
+            <p class="settings-hint">
+              Appliqué aux nouvelles réservations. Les réservations existantes conservent leur pourcentage.
+            </p>
+          </div>
+
+          <p v-if="platformSettings.error" class="settings-error">{{ platformSettings.error }}</p>
+
+          <div class="settings-actions">
+            <button type="submit" class="btn-primary-filled settings-save" :disabled="platformSettings.saving">
+              <Loader2 v-if="platformSettings.saving" :size="15" class="spin" />
+              Enregistrer
+            </button>
+          </div>
+        </form>
+      </section>
+
       <!-- ── CATÉGORIES ──────────────────────────────── -->
       <section v-else-if="section === 'categories'" class="section-content">
         <div class="toolbar">
@@ -553,7 +596,7 @@ import { useRouter } from 'vue-router'
 import {
   LayoutDashboard, Users, Scissors, FileCheck, Search,
   LogOut, PanelLeftClose, PanelLeftOpen, Clock, CheckCircle,
-  UserPlus, Pencil, Trash2, FileText, Check, X, Plus, Loader2, Tag, Mail
+  UserPlus, Pencil, Trash2, FileText, Check, X, Plus, Loader2, Tag, Mail, Settings
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -564,7 +607,7 @@ const toast     = useToast()
 
 // ── Sidebar ──────────────────────────────────────────
 const sidebarClosed = ref(false)
-const section = ref<'dashboard' | 'kyc' | 'pros' | 'clients' | 'categories' | 'emails'>('dashboard')
+const section = ref<'dashboard' | 'kyc' | 'pros' | 'clients' | 'categories' | 'emails' | 'settings'>('dashboard')
 
 const navItems = [
   { key: 'dashboard',  label: 'Tableau de bord', icon: LayoutDashboard },
@@ -572,7 +615,8 @@ const navItems = [
   { key: 'pros',       label: 'Professionnels',  icon: Scissors },
   { key: 'clients',    label: 'Clients',         icon: Users },
   { key: 'emails',     label: 'Emails',          icon: Mail },
-  { key: 'categories', label: 'Catégories',      icon: Tag }
+  { key: 'categories', label: 'Catégories',      icon: Tag },
+  { key: 'settings',   label: 'Paramètres',      icon: Settings }
 ] as const
 
 const currentSection = computed(() => navItems.find(n => n.key === section.value))
@@ -945,6 +989,50 @@ async function deleteSubcat (catId: string, subId: string) {
   fetchCats()
 }
 
+// ── Paramètres plateforme ─────────────────────────────
+const platformSettings = reactive({
+  depositPercent: 20,
+  loading: false,
+  saving: false,
+  error: ''
+})
+
+async function fetchPlatformSettings () {
+  platformSettings.loading = true
+  platformSettings.error = ''
+  try {
+    const d = await api('/api/admin/settings')
+    platformSettings.depositPercent = d.data.depositPercent
+  } catch (err: any) {
+    platformSettings.error = err.message || 'Impossible de charger les paramètres.'
+  } finally {
+    platformSettings.loading = false
+  }
+}
+
+async function savePlatformSettings () {
+  const value = Number(platformSettings.depositPercent)
+  if (!Number.isFinite(value) || value < 0 || value > 100) {
+    platformSettings.error = 'Le pourcentage doit être entre 0 et 100.'
+    return
+  }
+
+  platformSettings.saving = true
+  platformSettings.error = ''
+  try {
+    const d = await api('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ depositPercent: value })
+    })
+    platformSettings.depositPercent = d.data.depositPercent
+    toast.success('Paramètres enregistrés.')
+  } catch (err: any) {
+    platformSettings.error = err.message
+  } finally {
+    platformSettings.saving = false
+  }
+}
+
 // ── Init ──────────────────────────────────────────────
 onMounted(() => {
   fetchStats(); fetchKycList(); fetchProsList(); fetchClientsList(); fetchCats()
@@ -952,6 +1040,7 @@ onMounted(() => {
 
 watch(section, (s) => {
   if (s === 'emails') fetchEmailLogs()
+  if (s === 'settings') fetchPlatformSettings()
 })
 
 // ── Pagination component ──────────────────────────────
@@ -1429,6 +1518,74 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .modal-error { color: #c0565b; font-size: 0.82rem; margin: 0.25rem 0; }
 .req { color: #c0565b; }
 .mf.full { grid-column: 1 / -1; }
+
+.settings-card {
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid #E4E0DC;
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.settings-field label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4F3942;
+  margin-bottom: 0.5rem;
+}
+
+.settings-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-input-row input {
+  width: 100px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #D8D2CC;
+  border-radius: 10px;
+  font-size: 1rem;
+}
+
+.settings-input-row input:focus {
+  outline: none;
+  border-color: #D1A1C7;
+  box-shadow: 0 0 0 3px rgba(209,161,199,0.15);
+}
+
+.settings-suffix {
+  font-size: 1rem;
+  color: #7A5570;
+}
+
+.settings-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.78rem;
+  color: #8A7A82;
+  line-height: 1.45;
+}
+
+.settings-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: #B42318;
+}
+
+.settings-actions {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #F0EBE8;
+}
+
+.settings-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 140px;
+  justify-content: center;
+}
 
 @media (max-width: 768px) {
   .admin-sidebar { width: 64px; }
