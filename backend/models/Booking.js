@@ -41,6 +41,7 @@ const bookingSchema = new mongoose.Schema(
     price       : { type: Number, required: true },
     depositPercent : { type: Number, default: null, min: 0, max: 100 },
     depositAmount  : { type: Number, default: null },
+    remainingAmount: { type: Number, default: null },
     originalPrice   : { type: Number, default: null },
     discountPercent : { type: Number, default: 0 },
     cashbackEarned  : { type: Number, default: 0 },

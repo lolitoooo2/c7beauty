@@ -27,6 +27,10 @@ function computeDepositAmount (totalPriceEur, depositPercent) {
   return Math.round(totalPriceEur * depositPercent / 100 * 100) / 100
 }
 
+function computeRemainingAmount (totalPriceEur, depositAmountEur) {
+  return Math.max(0, Math.round((totalPriceEur - depositAmountEur) * 100) / 100)
+}
+
 function computeCommission (amountEur, commissionPercent) {
   const rate = commissionPercent / 100
   const platformCommission = Math.round(amountEur * rate * 100) / 100
@@ -53,6 +57,7 @@ function validateCommissionPercent (value) {
 module.exports = {
   getPlatformSettings,
   computeDepositAmount,
+  computeRemainingAmount,
   computeCommission,
   validateDepositPercent,
   validateCommissionPercent,

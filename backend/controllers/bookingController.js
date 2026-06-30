@@ -16,7 +16,7 @@ const {
   getLoyaltyPreview
 } = require('../utils/loyaltyHelpers')
 const { isStripeEnabled } = require('../utils/stripeHelpers')
-const { getPlatformSettings } = require('../utils/platformSettings')
+const { getPlatformSettings, computeRemainingAmount } = require('../utils/platformSettings')
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
 
 function parseSlotTimes (dateStr, startTime, duration) {
@@ -41,6 +41,14 @@ async function validateSlotStillInGrid ({
   return result.slots.some(s => s.startTime === startTime)
 }
 
+function resolveRemainingAmount (b) {
+  if (b.remainingAmount != null) return b.remainingAmount
+  if (b.depositAmount != null && b.price != null) {
+    return computeRemainingAmount(b.price, b.depositAmount)
+  }
+  return null
+}
+
 function formatBooking (b) {
   const client = b.clientId && typeof b.clientId === 'object'
     ? { _id: b.clientId._id, firstName: b.clientId.firstName, lastName: b.clientId.lastName, phone: b.clientId.phone, email: b.clientId.email }
@@ -58,9 +66,10 @@ function formatBooking (b) {
     serviceName    : b.serviceName,
     duration       : b.duration,
     price          : b.price,
-    depositPercent : b.depositPercent ?? null,
-    depositAmount  : b.depositAmount ?? null,
-    cancelledAt    : b.cancelledAt,
+    depositPercent  : b.depositPercent ?? null,
+    depositAmount   : b.depositAmount ?? null,
+    remainingAmount : resolveRemainingAmount(b),
+    cancelledAt     : b.cancelledAt,
     createdAt      : b.createdAt,
     client,
     pro            : b.proId && typeof b.proId === 'object'

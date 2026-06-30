@@ -15,6 +15,7 @@ const {
 const {
   getPlatformSettings,
   computeDepositAmount,
+  computeRemainingAmount,
   computeCommission
 } = require('../utils/platformSettings')
 
@@ -28,6 +29,11 @@ function checkoutPayload (session) {
 
 function formatBookingFromPayment (booking) {
   if (!booking) return null
+  const remainingAmount = booking.remainingAmount != null
+    ? booking.remainingAmount
+    : (booking.depositAmount != null && booking.price != null
+      ? computeRemainingAmount(booking.price, booking.depositAmount)
+      : null)
   return {
     _id            : booking._id,
     proId          : typeof booking.proId === 'object' ? booking.proId?._id : booking.proId,
@@ -40,9 +46,10 @@ function formatBookingFromPayment (booking) {
     serviceName    : booking.serviceName,
     duration       : booking.duration,
     price          : booking.price,
-    depositPercent : booking.depositPercent ?? null,
-    depositAmount  : booking.depositAmount ?? null,
-    originalPrice  : booking.originalPrice,
+    depositPercent  : booking.depositPercent ?? null,
+    depositAmount   : booking.depositAmount ?? null,
+    remainingAmount,
+    originalPrice   : booking.originalPrice,
     discountPercent: booking.discountPercent,
     cashbackEarned : booking.cashbackEarned,
     pro            : booking.proId && typeof booking.proId === 'object'
@@ -122,6 +129,7 @@ exports.createCheckout = async (req, res) => {
     const depositPercent    = settings.depositPercent
     const commissionPercent = settings.commissionPercent
     const depositAmount     = computeDepositAmount(finalPrice, depositPercent)
+    const remainingAmount   = computeRemainingAmount(finalPrice, depositAmount)
 
     if (depositAmount < 0.50) {
       return res.status(400).json({ message: 'Montant minimum de paiement : 0,50 €.' })
@@ -166,6 +174,7 @@ exports.createCheckout = async (req, res) => {
       amountCents,
       totalPrice     : finalPrice,
       depositPercent,
+      remainingAmount,
       commissionPercent,
       originalPrice,
       discountPercent,
@@ -186,7 +195,7 @@ exports.createCheckout = async (req, res) => {
           unit_amount  : amountCents,
           product_data : {
             name        : service.name,
-            description : `${pro.salonName} — acompte ${depositPercent} % (${depositAmount.toFixed(2)} €)`
+            description : `${pro.salonName} — acompte ${depositPercent} % (${depositAmount.toFixed(2)} €), solde ${remainingAmount.toFixed(2)} € non prélevé`
           }
         }
       }],

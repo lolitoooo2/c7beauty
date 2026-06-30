@@ -157,6 +157,10 @@
             Acompte {{ depositPercent }} % : <strong>{{ depositAmount.toFixed(2) }} €</strong>
             <span class="bk-payment__deposit-total">(sur {{ displayPrice.toFixed(2) }} €)</span>
           </p>
+          <p v-if="remainingAmount > 0" class="bk-payment__remaining">
+            Solde restant : <strong>{{ remainingAmount.toFixed(2) }} €</strong>
+            <span class="bk-payment__deposit-total">— payé après la prestation</span>
+          </p>
           <p v-if="loyaltyPreview?.cashbackEarn" class="bk-payment__cashback">
             +{{ loyaltyPreview.cashbackEarn.toFixed(2) }} € cashback après paiement
           </p>
@@ -292,6 +296,10 @@ const displayPrice = computed(() =>
 
 const depositAmount = computed(() =>
   Math.round(displayPrice.value * depositPercent.value / 100 * 100) / 100
+)
+
+const remainingAmount = computed(() =>
+  Math.max(0, Math.round((displayPrice.value - depositAmount.value) * 100) / 100)
 )
 
 const eligibleCollaborators = computed(() =>
@@ -1026,6 +1034,12 @@ onMounted(() => {
   margin: 0.5rem 0 0;
   font-size: 0.88rem;
   color: #4F3942;
+}
+
+.bk-payment__remaining {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: #666;
 }
 
 .bk-payment__deposit-total {

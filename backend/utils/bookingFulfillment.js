@@ -10,7 +10,8 @@ const {
 } = require('./loyaltyHelpers')
 const {
   getPlatformSettings,
-  computeDepositAmount
+  computeDepositAmount,
+  computeRemainingAmount
 } = require('./platformSettings')
 const { ensureBookingConfirmationEmailSent } = require('./bookingEmailHelpers')
 
@@ -120,25 +121,32 @@ async function fulfillHoldToBooking ({
 
   let depositPercent
   let depositAmount
+  let totalPrice = finalPrice
+  let remainingAmount
 
   if (paymentId) {
     const paymentDoc = await Payment.findById(paymentId)
     if (paymentDoc) {
-      depositPercent = paymentDoc.depositPercent
-      depositAmount  = paymentDoc.amount
+      depositPercent    = paymentDoc.depositPercent
+      depositAmount     = paymentDoc.amount
+      totalPrice        = paymentDoc.totalPrice ?? finalPrice
+      remainingAmount   = paymentDoc.remainingAmount ?? computeRemainingAmount(totalPrice, depositAmount)
     }
   } else if (stripeSessionId) {
     const paymentDoc = await Payment.findOne({ stripeSessionId })
     if (paymentDoc) {
-      depositPercent = paymentDoc.depositPercent
-      depositAmount  = paymentDoc.amount
+      depositPercent    = paymentDoc.depositPercent
+      depositAmount     = paymentDoc.amount
+      totalPrice        = paymentDoc.totalPrice ?? finalPrice
+      remainingAmount   = paymentDoc.remainingAmount ?? computeRemainingAmount(totalPrice, depositAmount)
     }
   }
 
   if (depositPercent == null) {
     const settings = await getPlatformSettings()
-    depositPercent = settings.depositPercent
-    depositAmount  = computeDepositAmount(finalPrice, depositPercent)
+    depositPercent  = settings.depositPercent
+    depositAmount   = computeDepositAmount(finalPrice, depositPercent)
+    remainingAmount = computeRemainingAmount(finalPrice, depositAmount)
   }
 
   const booking = await Booking.create({
@@ -151,9 +159,10 @@ async function fulfillHoldToBooking ({
     status         : 'confirmed',
     serviceName    : service.name,
     duration       : service.duration,
-    price          : finalPrice,
+    price          : totalPrice,
     depositPercent,
     depositAmount,
+    remainingAmount,
     originalPrice,
     discountPercent,
     cashbackEarned : 0

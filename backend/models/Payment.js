@@ -38,6 +38,7 @@ const paymentSchema = new mongoose.Schema(
     amountCents    : { type: Number, required: true },
     totalPrice     : { type: Number, required: true },
     depositPercent : { type: Number, required: true, min: 0, max: 100 },
+    remainingAmount: { type: Number, required: true },
     originalPrice  : { type: Number, required: true },
     discountPercent: { type: Number, default: 0 },
     currency       : { type: String, default: 'eur' },
