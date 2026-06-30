@@ -95,8 +95,14 @@
         <p class="section__sub">Coiffure, beauté, bien-être — trouvez le professionnel qu'il vous faut.</p>
 
         <div class="prestations-grid">
-          <article class="prestation-card" v-for="p in prestations" :key="p.slug">
-            <Sparkles class="prestation-card__icon" :size="32" :stroke-width="1.5" />
+          <article class="prestation-card" v-for="p in homePrestations" :key="p.slug">
+            <component
+              :is="getCategoryIcon(p.icon)"
+              class="prestation-card__icon"
+              :size="32"
+              :stroke-width="1.5"
+              aria-hidden="true"
+            />
             <h3 class="prestation-card__label">{{ p.name }}</h3>
           </article>
         </div>
@@ -160,6 +166,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import heroImg from '@/assets/home-hero.jpg'
 import { useAuthStore } from '@/stores/auth'
 import { Sparkles, MapPin, Search } from 'lucide-vue-next'
+import { getCategoryIcon } from '@/lib/categoryIcons'
 import LieuAutocompleteInput from '@/components/LieuAutocompleteInput.vue'
 import PrestationAutocompleteInput from '@/components/PrestationAutocompleteInput.vue'
 import type { LieuSuggestion } from '@/composables/useLieuAutocomplete'
@@ -235,9 +242,11 @@ async function submitSearch () {
   router.push(`/recherche?${params.toString()}`)
 }
 
-// Catégories depuis l'API
-interface ApiCategory { _id: string; name: string; slug: string }
+const HOME_PRESTATIONS_LIMIT = 6
+
+interface ApiCategory { _id: string; name: string; slug: string; icon?: string }
 const prestations = ref<ApiCategory[]>([])
+const homePrestations = computed(() => prestations.value.slice(0, HOME_PRESTATIONS_LIMIT))
 
 async function fetchPrestations () {
   try {
