@@ -10,12 +10,12 @@ const {
   isStripeEnabled,
   getFrontendUrl,
   getPublishableKey,
-  computeCommission,
   eurosToCents
 } = require('../utils/stripeHelpers')
 const {
   getPlatformSettings,
-  computeDepositAmount
+  computeDepositAmount,
+  computeCommission
 } = require('../utils/platformSettings')
 
 function checkoutPayload (session) {
@@ -119,8 +119,9 @@ exports.createCheckout = async (req, res) => {
       computeBookingPrice(client, service.price)
 
     const settings = await getPlatformSettings()
-    const depositPercent = settings.depositPercent
-    const depositAmount  = computeDepositAmount(finalPrice, depositPercent)
+    const depositPercent    = settings.depositPercent
+    const commissionPercent = settings.commissionPercent
+    const depositAmount     = computeDepositAmount(finalPrice, depositPercent)
 
     if (depositAmount < 0.50) {
       return res.status(400).json({ message: 'Montant minimum de paiement : 0,50 €.' })
@@ -151,7 +152,7 @@ exports.createCheckout = async (req, res) => {
       }
     }
 
-    const { platformCommission, proShare } = computeCommission(depositAmount)
+    const { platformCommission, proShare } = computeCommission(depositAmount, commissionPercent)
     const amountCents = eurosToCents(depositAmount)
     const frontendUrl = getFrontendUrl()
 
@@ -165,6 +166,7 @@ exports.createCheckout = async (req, res) => {
       amountCents,
       totalPrice     : finalPrice,
       depositPercent,
+      commissionPercent,
       originalPrice,
       discountPercent,
       platformCommission,

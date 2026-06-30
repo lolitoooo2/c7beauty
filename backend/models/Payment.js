@@ -42,6 +42,7 @@ const paymentSchema = new mongoose.Schema(
     discountPercent: { type: Number, default: 0 },
     currency       : { type: String, default: 'eur' },
 
+    commissionPercent  : { type: Number, default: null, min: 0, max: 100 },
     platformCommission : { type: Number, required: true },
     proShare           : { type: Number, required: true },
 

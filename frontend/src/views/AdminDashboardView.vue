@@ -370,6 +370,25 @@
             </p>
           </div>
 
+          <div class="settings-field">
+            <label for="commissionPercent">Taux de commission C7'Beauty</label>
+            <div class="settings-input-row">
+              <input
+                id="commissionPercent"
+                v-model.number="platformSettings.commissionPercent"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                required
+              />
+              <span class="settings-suffix">%</span>
+            </div>
+            <p class="settings-hint">
+              Prélevé sur chaque paiement (acompte, solde, no-show). Les paiements déjà effectués conservent leur taux.
+            </p>
+          </div>
+
           <p v-if="platformSettings.error" class="settings-error">{{ platformSettings.error }}</p>
 
           <div class="settings-actions">
@@ -992,6 +1011,7 @@ async function deleteSubcat (catId: string, subId: string) {
 // ── Paramètres plateforme ─────────────────────────────
 const platformSettings = reactive({
   depositPercent: 20,
+  commissionPercent: 10,
   loading: false,
   saving: false,
   error: ''
@@ -1002,7 +1022,8 @@ async function fetchPlatformSettings () {
   platformSettings.error = ''
   try {
     const d = await api('/api/admin/settings')
-    platformSettings.depositPercent = d.data.depositPercent
+    platformSettings.depositPercent    = d.data.depositPercent
+    platformSettings.commissionPercent = d.data.commissionPercent
   } catch (err: any) {
     platformSettings.error = err.message || 'Impossible de charger les paramètres.'
   } finally {
@@ -1011,9 +1032,15 @@ async function fetchPlatformSettings () {
 }
 
 async function savePlatformSettings () {
-  const value = Number(platformSettings.depositPercent)
-  if (!Number.isFinite(value) || value < 0 || value > 100) {
-    platformSettings.error = 'Le pourcentage doit être entre 0 et 100.'
+  const deposit = Number(platformSettings.depositPercent)
+  const commission = Number(platformSettings.commissionPercent)
+
+  if (!Number.isFinite(deposit) || deposit < 0 || deposit > 100) {
+    platformSettings.error = 'Le pourcentage d\'acompte doit être entre 0 et 100.'
+    return
+  }
+  if (!Number.isFinite(commission) || commission < 0 || commission > 100) {
+    platformSettings.error = 'Le taux de commission doit être entre 0 et 100.'
     return
   }
 
@@ -1022,9 +1049,13 @@ async function savePlatformSettings () {
   try {
     const d = await api('/api/admin/settings', {
       method: 'PUT',
-      body: JSON.stringify({ depositPercent: value })
+      body: JSON.stringify({
+        depositPercent: deposit,
+        commissionPercent: commission
+      })
     })
-    platformSettings.depositPercent = d.data.depositPercent
+    platformSettings.depositPercent    = d.data.depositPercent
+    platformSettings.commissionPercent = d.data.commissionPercent
     toast.success('Paramètres enregistrés.')
   } catch (err: any) {
     platformSettings.error = err.message
@@ -1533,6 +1564,12 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   font-weight: 600;
   color: #4F3942;
   margin-bottom: 0.5rem;
+}
+
+.settings-field + .settings-field {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #F0EBE8;
 }
 
 .settings-input-row {

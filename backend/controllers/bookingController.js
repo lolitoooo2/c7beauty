@@ -15,7 +15,8 @@ const { getPeriodBoundsParis } = require('../utils/timezoneHelpers')
 const {
   getLoyaltyPreview
 } = require('../utils/loyaltyHelpers')
-const { isStripeEnabled, COMMISSION_RATE } = require('../utils/stripeHelpers')
+const { isStripeEnabled } = require('../utils/stripeHelpers')
+const { getPlatformSettings } = require('../utils/platformSettings')
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
 
 function parseSlotTimes (dateStr, startTime, duration) {
@@ -380,8 +381,8 @@ async function sumBookingRevenue (filter, bounds) {
   return result?.total ?? 0
 }
 
-function toProShare (grossEur) {
-  const net = grossEur * (1 - COMMISSION_RATE)
+function toProShare (grossEur, commissionPercent) {
+  const net = grossEur * (1 - commissionPercent / 100)
   return Math.round(net * 100) / 100
 }
 
@@ -389,6 +390,7 @@ exports.getProStats = async (req, res) => {
   try {
     const proId = req.userId
     const filter = buildProStatsFilter(proId, req.query.collaboratorId || null)
+    const { commissionPercent } = await getPlatformSettings()
 
     const dayBounds   = getPeriodBoundsParis('day')
     const weekBounds  = getPeriodBoundsParis('week')
@@ -429,9 +431,9 @@ exports.getProStats = async (req, res) => {
       monthCount,
       totalConfirmed,
       totalCancelled,
-      revenueToday  : toProShare(grossToday),
-      revenueWeek   : toProShare(grossWeek),
-      revenueMonth  : toProShare(grossMonth),
+      revenueToday  : toProShare(grossToday, commissionPercent),
+      revenueWeek   : toProShare(grossWeek, commissionPercent),
+      revenueMonth  : toProShare(grossMonth, commissionPercent),
       revenueTodayGross : grossToday,
       revenueWeekGross  : grossWeek,
       revenueMonthGross : grossMonth,

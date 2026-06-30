@@ -1,17 +1,21 @@
 const {
   getPlatformSettings,
-  validateDepositPercent
+  validateDepositPercent,
+  validateCommissionPercent
 } = require('../utils/platformSettings')
 
 function formatSettings (settings) {
-  return { depositPercent: settings.depositPercent }
+  return {
+    depositPercent    : settings.depositPercent,
+    commissionPercent : settings.commissionPercent
+  }
 }
 
 // ── GET /api/settings ─────────────────────────────────
 exports.getPublicSettings = async (req, res) => {
   try {
     const settings = await getPlatformSettings()
-    res.json(formatSettings(settings))
+    res.json({ depositPercent: settings.depositPercent })
   } catch (err) {
     console.error('[settings.getPublicSettings]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
@@ -32,18 +36,26 @@ exports.getAdminSettings = async (req, res) => {
 // ── PUT /api/admin/settings ───────────────────────────
 exports.updateAdminSettings = async (req, res) => {
   try {
-    const { depositPercent } = req.body
-    if (depositPercent === undefined) {
-      return res.status(400).json({ message: 'depositPercent requis.' })
-    }
+    const { depositPercent, commissionPercent } = req.body
 
-    const validation = validateDepositPercent(depositPercent)
-    if (!validation.ok) {
-      return res.status(400).json({ message: validation.message })
+    if (depositPercent === undefined && commissionPercent === undefined) {
+      return res.status(400).json({ message: 'Au moins un paramètre requis.' })
     }
 
     const settings = await getPlatformSettings()
-    settings.depositPercent = validation.value
+
+    if (depositPercent !== undefined) {
+      const validation = validateDepositPercent(depositPercent)
+      if (!validation.ok) return res.status(400).json({ message: validation.message })
+      settings.depositPercent = validation.value
+    }
+
+    if (commissionPercent !== undefined) {
+      const validation = validateCommissionPercent(commissionPercent)
+      if (!validation.ok) return res.status(400).json({ message: validation.message })
+      settings.commissionPercent = validation.value
+    }
+
     await settings.save()
 
     res.json({ message: 'Paramètres mis à jour.', data: formatSettings(settings) })

@@ -1,6 +1,7 @@
 const Stripe = require('stripe')
+const { DEFAULT_COMMISSION_PERCENT } = require('../models/PlatformSettings')
 
-const COMMISSION_RATE = 0.10
+const COMMISSION_RATE = DEFAULT_COMMISSION_PERCENT / 100
 
 function getStripe () {
   const key = process.env.STRIPE_SECRET_KEY
@@ -20,8 +21,9 @@ function getPublishableKey () {
   return process.env.STRIPE_PUBLISHABLE_KEY || ''
 }
 
-function computeCommission (amountEur) {
-  const platformCommission = Math.round(amountEur * COMMISSION_RATE * 100) / 100
+function computeCommission (amountEur, commissionPercent = DEFAULT_COMMISSION_PERCENT) {
+  const rate = commissionPercent / 100
+  const platformCommission = Math.round(amountEur * rate * 100) / 100
   const proShare           = Math.round((amountEur - platformCommission) * 100) / 100
   return { platformCommission, proShare }
 }
