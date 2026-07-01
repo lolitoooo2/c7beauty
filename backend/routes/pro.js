@@ -56,6 +56,7 @@ router.get('/bookings', booking.listForPro)
 router.get('/stats', booking.getProStats)
 router.patch('/bookings/:id/cancel', booking.cancelByPro)
 router.patch('/bookings/:id/validate', booking.validateByPro)
+router.patch('/bookings/:id/no-show',  booking.markNoShowByPro)
 
 // Photos du salon
 router.post('/photos',             shopsUpload.single('photo'), addShopPhoto)

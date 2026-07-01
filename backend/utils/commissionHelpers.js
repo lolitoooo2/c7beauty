@@ -9,7 +9,8 @@ const COMMISSION_CONTEXT = {
 const CONTEXT_LABELS = {
   [COMMISSION_CONTEXT.DEPOSIT] : 'Acompte',
   [COMMISSION_CONTEXT.BALANCE] : 'Solde',
-  [COMMISSION_CONTEXT.NO_SHOW] : 'No-show'
+  [COMMISSION_CONTEXT.NO_SHOW] : 'No-show',
+  no_show_settlement           : 'Règlement no-show'
 }
 
 function roundEur (value) {

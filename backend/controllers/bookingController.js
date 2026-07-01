@@ -24,6 +24,12 @@ const {
   validateByClient,
   openDispute
 } = require('../utils/bookingValidation')
+const {
+  isLateCancellation,
+  hasPaidDeposit,
+  markNoShowByPro,
+  applyLateCancellationForfeit
+} = require('../utils/noShowHelpers')
 
 function parseSlotTimes (dateStr, startTime, duration) {
   const start = dateAtTime(dateStr, startTime)
@@ -82,13 +88,23 @@ function formatBooking (b) {
 }
 
 async function cancelBookingById ({ booking, cancelledBy }) {
-  if (booking.start <= new Date()) {
+  const now = new Date()
+  if (booking.start <= now) {
     const err = new Error('Impossible d\'annuler un rendez-vous passé ou en cours.')
     err.status = 400
     throw err
   }
+
+  if (
+    cancelledBy === 'client'
+    && hasPaidDeposit(booking)
+    && isLateCancellation(booking, now)
+  ) {
+    return applyLateCancellationForfeit({ booking, cancelledBy })
+  }
+
   booking.status      = 'cancelled'
-  booking.cancelledAt = new Date()
+  booking.cancelledAt = now
   booking.cancelledBy = cancelledBy
   await booking.save()
   return booking
@@ -310,10 +326,15 @@ exports.cancelByClient = async (req, res) => {
 
     await cancelBookingById({ booking, cancelledBy: 'client' })
 
-    res.json({ message: 'Rendez-vous annulé.', booking: formatBooking(booking.toObject()) })
+    res.json({
+      message : booking.noShow?.settledAt
+        ? 'Annulation enregistrée. L\'acompte est conservé (moins de 24 h avant le rendez-vous).'
+        : 'Rendez-vous annulé.',
+      booking : formatBooking(booking.toObject())
+    })
   } catch (err) {
     console.error('[booking.cancelByClient]', err)
-    res.status(500).json({ message: 'Erreur serveur.' })
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
   }
 }
 
@@ -368,6 +389,29 @@ exports.validateByPro = async (req, res) => {
     })
   } catch (err) {
     console.error('[booking.validateByPro]', err)
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── PATCH /api/pro/bookings/:id/no-show ───────────────
+exports.markNoShowByPro = async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id   : req.params.id,
+      proId : req.userId,
+      status: 'confirmed'
+    })
+
+    if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
+
+    await markNoShowByPro({ booking, proId: req.userId })
+
+    res.json({
+      message : 'No-show enregistré. L\'acompte est conservé et reversé au professionnel (net de commission).',
+      booking : formatBooking(booking.toObject())
+    })
+  } catch (err) {
+    console.error('[booking.markNoShowByPro]', err)
     res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
   }
 }
@@ -457,8 +501,13 @@ function inRangeFilter (bounds) {
 
 async function sumPaymentSharesForBookings (filter, bounds) {
   const bookingIds = await Booking.find({
-    ...filter,
-    ...inRangeFilter(bounds)
+    proId          : filter.proId,
+    ...(filter.collaboratorId ? { collaboratorId: filter.collaboratorId } : {}),
+    ...inRangeFilter(bounds),
+    $or: [
+      { status: { $in: ['confirmed', 'completed'] } },
+      { status: 'cancelled', 'noShow.settledAt': { $ne: null } }
+    ]
   }).distinct('_id')
 
   if (!bookingIds.length) {

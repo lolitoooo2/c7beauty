@@ -53,6 +53,27 @@ const bookingSchema = new mongoose.Schema(
       default : null
     },
 
+    noShow : {
+      status : {
+        type : String,
+        enum : ['client_absent', 'late_cancellation', null],
+        default : null
+      },
+      settledAt          : { type: Date, default: null },
+      markedBy           : { type: String, default: null },
+      depositKept        : { type: Number, default: null },
+      commissionPercent  : { type: Number, default: null },
+      platformCommission : { type: Number, default: null },
+      proShare           : { type: Number, default: null },
+      history : [{
+        action   : { type: String, required: true },
+        by       : { type: String, required: true },
+        byUserId : { type: mongoose.Schema.Types.ObjectId, default: null },
+        at       : { type: Date, default: Date.now },
+        note     : { type: String, default: null }
+      }]
+    },
+
     financial : {
       totalCollected          : { type: Number, default: 0 },
       totalPlatformCommission : { type: Number, default: 0 },

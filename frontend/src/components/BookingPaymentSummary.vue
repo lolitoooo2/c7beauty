@@ -52,6 +52,10 @@
         <span class="pay-meta-label">No-show</span>
         <span class="pay-meta-value">{{ noShow.statusLabel }}</span>
       </div>
+      <div v-if="noShow?.proShare != null" class="pay-meta-row">
+        <span class="pay-meta-label">Reversement pro</span>
+        <span class="pay-meta-value">{{ formatEur(noShow.proShare) }}</span>
+      </div>
       <template v-if="commission">
         <div class="pay-meta-row">
           <span class="pay-meta-label">Commission C7'Beauty</span>
@@ -117,6 +121,9 @@ export interface StatusInfo {
   disputeOpen?: boolean
   available?: boolean
   canMark?: boolean
+  depositKept?: number | null
+  proShare?: number | null
+  platformCommission?: number | null
   history?: Array<{ action: string; by: string; at: string; note?: string | null }>
 }
 
@@ -190,6 +197,7 @@ function formatEur (value: number | null | undefined) {
 .pay-badge.deposit_paid { background: #e8f4ec; color: #2d6a4f; }
 .pay-badge.ready_for_final { background: #e8f0fa; color: #1d4ed8; }
 .pay-badge.balance_charge_failed { background: #fef3cd; color: #92400e; }
+.pay-badge.no_show_settled { background: #fdecea; color: #9a3412; }
 .pay-badge.dispute_blocked { background: #fdecea; color: #b42318; }
 .pay-badge.paid_in_full,
 .pay-badge.legacy_paid { background: #e8f4ec; color: #2d6a4f; }

@@ -922,6 +922,16 @@
             Confirmer la prestation
           </button>
           <button
+            v-if="bookingDetailModal.noShow?.canMark"
+            type="button"
+            class="btn-cancel danger-text"
+            :disabled="bookingDetailModal.noShowLoading"
+            @click="markNoShowBooking"
+          >
+            <Loader2 v-if="bookingDetailModal.noShowLoading" :size="14" class="spin" />
+            Signaler un no-show
+          </button>
+          <button
             v-if="bookingDetailIsFuture && bookingDetailModal.bookingId"
             type="button"
             class="btn-cancel danger-text"
@@ -1719,7 +1729,8 @@ const bookingDetailModal = reactive({
   noShow             : null as StatusInfo | null,
   startIso           : '',
   cancelLoading      : false,
-  validateLoading    : false
+  validateLoading    : false,
+  noShowLoading      : false
 })
 
 const agendaBookingsGrouped = computed(() => {
@@ -1784,7 +1795,8 @@ function openBookingDetailFromEvent (payload: {
     noShow            : payload.noShow ?? null,
     startIso          : payload.startIso || '',
     cancelLoading     : false,
-    validateLoading   : false
+    validateLoading   : false,
+    noShowLoading     : false
   })
 }
 
@@ -1824,7 +1836,8 @@ function formatValidationHistory (entry: { action: string; by: string; at: strin
     pro_validated         : 'Validé par le professionnel',
     client_validated      : 'Validé par le client',
     contestation_started  : 'Période de contestation ouverte',
-    ready_for_payment     : 'Prêt pour paiement final'
+    ready_for_payment     : 'Prêt pour paiement final',
+    no_show_settled       : 'No-show / annulation tardive — acompte conservé'
   }
   const label = labels[entry.action] || entry.action
   return `${when} — ${label}`
@@ -1850,6 +1863,29 @@ async function validateProBooking () {
     toast.error(err instanceof Error ? err.message : 'Erreur')
   } finally {
     bookingDetailModal.validateLoading = false
+  }
+}
+
+async function markNoShowBooking () {
+  if (!bookingDetailModal.bookingId || !bookingDetailModal.noShow?.canMark) return
+  if (!confirm('Confirmer que le client ne s\'est pas présenté ? L\'acompte sera conservé.')) return
+
+  bookingDetailModal.noShowLoading = true
+  try {
+    const res = await fetch(`/api/pro/bookings/${bookingDetailModal.bookingId}/no-show`, {
+      method  : 'PATCH',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+
+    toast.success('No-show enregistré.')
+    bookingDetailModal.open = false
+    await fetchAgendaBookings()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  } finally {
+    bookingDetailModal.noShowLoading = false
   }
 }
 

@@ -1,5 +1,6 @@
 const { computeRemainingAmount } = require('./platformSettings')
 const { buildCommissionView } = require('./commissionHelpers')
+const { canMarkNoShow, NO_SHOW_TRIGGER, TRIGGER_LABELS } = require('./noShowHelpers')
 const {
   buildValidationView,
   WORKFLOW_STATUS
@@ -19,12 +20,35 @@ function buildPaymentSummary (booking) {
   const totalPrice      = booking.price
 
   if (booking.status === 'cancelled') {
+    if (booking.noShow?.settledAt) {
+      return {
+        status          : 'no_show_settled',
+        statusLabel     : 'Annulation tardive — acompte conservé',
+        totalPrice,
+        depositAmount,
+        remainingAmount : 0,
+        depositPercent  : booking.depositPercent ?? null
+      }
+    }
     return {
       status          : 'cancelled',
       statusLabel     : 'Paiement annulé',
       totalPrice,
       depositAmount,
       remainingAmount,
+      depositPercent  : booking.depositPercent ?? null
+    }
+  }
+
+  if (booking.noShow?.settledAt) {
+    return {
+      status          : 'no_show_settled',
+      statusLabel     : booking.noShow.status === NO_SHOW_TRIGGER.CLIENT_ABSENT
+        ? 'No-show — acompte conservé'
+        : 'Annulation tardive — acompte conservé',
+      totalPrice,
+      depositAmount,
+      remainingAmount : 0,
       depositPercent  : booking.depositPercent ?? null
     }
   }
@@ -160,16 +184,29 @@ function buildDisputeInfo (booking) {
 }
 
 function buildNoShowInfo (booking) {
+  if (booking.noShow?.settledAt) {
+    return {
+      status             : booking.noShow.status,
+      statusLabel        : TRIGGER_LABELS[booking.noShow.status] || 'Acompte conservé',
+      canMark            : false,
+      depositKept        : booking.noShow.depositKept ?? null,
+      platformCommission : booking.noShow.platformCommission ?? null,
+      proShare           : booking.noShow.proShare ?? null
+    }
+  }
+
   if (booking.status === 'cancelled') {
     return { status: 'cancelled', statusLabel: '—', canMark: false }
   }
+
   if (new Date(booking.start) > new Date()) {
     return { status: 'upcoming', statusLabel: '—', canMark: false }
   }
+
   return {
     status      : 'none',
-    statusLabel : 'Non signalé',
-    canMark     : false
+    statusLabel : canMarkNoShow(booking) ? 'Client absent ?' : 'Non signalé',
+    canMark     : canMarkNoShow(booking)
   }
 }
 
