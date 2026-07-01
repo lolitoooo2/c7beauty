@@ -388,7 +388,11 @@
                   <span class="cell-sub">{{ p.commissionPercent ?? '—' }} %</span>
                 </td>
                 <td><code>{{ p.validationStatus || '—' }}</code></td>
-                <td><span class="pay-admin-badge" :class="p.status">{{ p.statusLabel }}</span></td>
+                <td>
+                  <span class="pay-admin-badge" :class="p.status">{{ p.statusLabel }}</span>
+                  <span v-if="p.paymentPhase === 'balance'" class="cell-sub">Solde · tentative {{ p.chargeAttempt }}</span>
+                  <span v-if="p.failureReason" class="cell-sub cell-sub--warn">{{ p.failureReason }}</span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1413,6 +1417,7 @@ const Pagination = defineComponent({
 }
 .cell-name { display: block; font-weight: 500; font-size: 0.85rem; color: #4F3942; }
 .cell-sub  { display: block; font-size: 0.72rem; color: #aaa; }
+.cell-sub--warn { color: #b42318; }
 
 .badge {
   display: inline-block; padding: 0.2rem 0.65rem;

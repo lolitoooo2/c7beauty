@@ -1,6 +1,7 @@
 const Payment = require('../models/Payment')
 const { getStripe } = require('../utils/stripeHelpers')
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
+const { syncClientStripeCustomerId } = require('../utils/stripeCustomer')
 
 exports.handleStripeWebhook = async (req, res) => {
   const stripe = getStripe()
@@ -30,6 +31,10 @@ exports.handleStripeWebhook = async (req, res) => {
         if (!payment) {
           console.warn('[stripe.webhook] Payment introuvable pour session', session.id)
           break
+        }
+
+        if (session.customer) {
+          await syncClientStripeCustomerId(payment.clientId, session.customer)
         }
 
         await fulfillHoldToBooking({

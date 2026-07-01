@@ -20,6 +20,7 @@ const {
 } = require('../utils/platformSettings')
 const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
 const { canTriggerFinalPayment } = require('../utils/bookingValidation')
+const { ensureStripeCustomer, syncClientStripeCustomerId } = require('../utils/stripeCustomer')
 
 function checkoutPayload (session) {
   return {
@@ -72,6 +73,10 @@ function formatBookingFromPayment (booking) {
 
 async function tryFulfillFromStripeSession (session, payment) {
   if (!session || session.payment_status !== 'paid') return null
+
+  if (session.customer) {
+    await syncClientStripeCustomerId(payment.clientId, session.customer)
+  }
 
   const result = await fulfillHoldToBooking({
     holdId                : payment.holdId,
@@ -161,6 +166,7 @@ exports.createCheckout = async (req, res) => {
     const { platformCommission, proShare } = computeCommission(depositAmount, commissionPercent)
     const amountCents = eurosToCents(depositAmount)
     const frontendUrl = getFrontendUrl()
+    const stripeCustomerId = await ensureStripeCustomer({ stripe, client })
 
     const payment = await Payment.create({
       holdId,
@@ -185,6 +191,7 @@ exports.createCheckout = async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       ui_mode     : 'embedded',
       mode        : 'payment',
+      customer    : stripeCustomerId,
       currency    : 'eur',
       line_items  : [{
         quantity   : 1,
@@ -197,6 +204,16 @@ exports.createCheckout = async (req, res) => {
           }
         }
       }],
+      payment_intent_data : {
+        setup_future_usage : 'off_session',
+        metadata           : {
+          holdId       : String(holdId),
+          paymentId    : String(payment._id),
+          clientId     : String(req.userId),
+          proId        : String(hold.proId),
+          paymentPhase : 'deposit'
+        }
+      },
       metadata : {
         holdId    : String(holdId),
         paymentId : String(payment._id),
@@ -301,5 +318,5 @@ exports.getCheckoutStatus = async (req, res) => {
   }
 }
 
-// Garde-fou JIRA-04 — solde prélevable uniquement si validations complètes
+// Garde-fou KAN-9 — solde prélevable uniquement si validations complètes
 exports.canChargeBalance = canTriggerFinalPayment

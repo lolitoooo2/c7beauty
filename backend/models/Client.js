@@ -20,6 +20,8 @@ const clientSchema = new mongoose.Schema(
     birthdate  : { type: Date,   default: null },
     isActive  : { type: Boolean, default: true },
 
+    stripeCustomerId : { type: String, default: null, index: true, sparse: true },
+
     // Parrainage
     referralUsed   : { type: String, default: null },  // code utilisé à l'inscription
     myReferralCode : { type: String, unique: true, sparse: true },

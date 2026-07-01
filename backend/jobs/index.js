@@ -13,7 +13,7 @@ function startScheduledJobs () {
     })
   })
 
-  console.log('[cron] Contestation 24h + paiement solde auto (toutes les 5 min)')
+  console.log('[cron] Prélèvement solde auto après contestation (toutes les 5 min)')
 }
 
 module.exports = { startScheduledJobs }

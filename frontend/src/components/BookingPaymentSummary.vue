@@ -151,6 +151,8 @@ function formatEur (value: number | null | undefined) {
 }
 
 .pay-badge.deposit_paid { background: #e8f4ec; color: #2d6a4f; }
+.pay-badge.ready_for_final { background: #e8f0fa; color: #1d4ed8; }
+.pay-badge.balance_charge_failed { background: #fef3cd; color: #92400e; }
 .pay-badge.dispute_blocked { background: #fdecea; color: #b42318; }
 .pay-badge.paid_in_full,
 .pay-badge.legacy_paid { background: #e8f4ec; color: #2d6a4f; }

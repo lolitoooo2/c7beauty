@@ -53,9 +53,19 @@ function buildPaymentSummary (booking) {
   }
 
   if (validation.canTriggerFinalPayment) {
+    if (booking.validation?.balanceChargeLastError) {
+      return {
+        status          : 'balance_charge_failed',
+        statusLabel     : 'Échec du prélèvement du solde — nouvelle tentative automatique',
+        totalPrice,
+        depositAmount,
+        remainingAmount,
+        depositPercent  : booking.depositPercent ?? null
+      }
+    }
     return {
       status          : 'ready_for_final',
-      statusLabel     : 'Solde prêt à être prélevé',
+      statusLabel     : 'Solde en cours de prélèvement',
       totalPrice,
       depositAmount,
       remainingAmount,

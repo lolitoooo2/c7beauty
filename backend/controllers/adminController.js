@@ -336,6 +336,9 @@ function formatAdminPayment (p) {
     bookingStart       : booking?.start || null,
     bookingStatus      : booking?.status || null,
     validationStatus   : booking?.validation?.workflowStatus || null,
+    paymentPhase       : p.paymentPhase || 'deposit',
+    chargeAttempt      : p.chargeAttempt ?? 1,
+    failureReason      : p.failureReason || null,
     createdAt          : p.createdAt
   }
 }

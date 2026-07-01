@@ -72,6 +72,9 @@ const bookingSchema = new mongoose.Schema(
       disputeOpen        : { type: Boolean, default: false },
       disputeReason      : { type: String, default: null },
       disputeOpenedAt    : { type: Date, default: null },
+      balanceChargeAttempts    : { type: Number, default: 0 },
+      balanceChargeLastError   : { type: String, default: null },
+      balanceChargeLastAttemptAt : { type: Date, default: null },
       history : [{
         action   : { type: String, required: true },
         by       : { type: String, required: true },

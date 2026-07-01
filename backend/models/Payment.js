@@ -62,7 +62,10 @@ const paymentSchema = new mongoose.Schema(
       enum    : ['deposit', 'balance'],
       default : 'deposit',
       index   : true
-    }
+    },
+
+    failureReason : { type: String, default: null },
+    chargeAttempt : { type: Number, default: 1, min: 1 }
   },
   {
     timestamps : true,
