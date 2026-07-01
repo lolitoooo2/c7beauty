@@ -2,8 +2,13 @@ const Booking = require('../models/Booking')
 const Payment = require('../models/Payment')
 const Client = require('../models/Client')
 const { resolveRemainingAmount } = require('./bookingPaymentHelpers')
-const { getPlatformSettings, computeCommission } = require('./platformSettings')
+const { getPlatformSettings } = require('./platformSettings')
 const { getStripe, isStripeEnabled, eurosToCents } = require('./stripeHelpers')
+const {
+  buildPaymentCommission,
+  recordCommissionForPayment,
+  COMMISSION_CONTEXT
+} = require('./commissionHelpers')
 const { resolveOffSessionPaymentMethod } = require('./stripeCustomer')
 const {
   WORKFLOW_STATUS,
@@ -112,6 +117,7 @@ async function createBalancePaymentDraft ({
     commissionPercent,
     platformCommission,
     proShare,
+    commissionContext     : COMMISSION_CONTEXT.BALANCE,
     halfPriceApplied      : depositPayment.halfPriceApplied ?? false,
     status                : 'pending',
     paymentPhase          : 'balance',
@@ -203,7 +209,7 @@ async function chargeBalanceWithStripe ({
       success : true,
       note    : `Solde de ${balanceAmount.toFixed(2)} € prélevé (tentative ${chargeAttempt})`
     })
-    await booking.save()
+    await recordCommissionForPayment({ booking, payment: balancePayment })
 
     return { ok: true, paymentId: balancePayment._id }
   } catch (err) {
@@ -244,7 +250,7 @@ async function chargeBalanceWithoutStripe ({
     success : true,
     note    : `Solde de ${balanceAmount.toFixed(2)} € enregistré (mode sans Stripe)`
   })
-  await booking.save()
+  await recordCommissionForPayment({ booking, payment: balancePayment })
 
   return { ok: true, paymentId: balancePayment._id }
 }
@@ -283,7 +289,11 @@ async function attemptAutomaticBalancePayment (booking) {
 
   const settings = await getPlatformSettings()
   const commissionPercent = depositPayment.commissionPercent ?? settings.commissionPercent
-  const { platformCommission, proShare } = computeCommission(balanceAmount, commissionPercent)
+  const { platformCommission, proShare } = buildPaymentCommission({
+    amountEur         : balanceAmount,
+    commissionPercent,
+    context           : COMMISSION_CONTEXT.BALANCE
+  })
   const chargeAttempt = await nextChargeAttemptNumber(booking._id)
 
   if (isStripeEnabled()) {

@@ -15,9 +15,12 @@ const {
 const {
   getPlatformSettings,
   computeDepositAmount,
-  computeRemainingAmount,
-  computeCommission
+  computeRemainingAmount
 } = require('../utils/platformSettings')
+const {
+  buildPaymentCommission,
+  COMMISSION_CONTEXT
+} = require('../utils/commissionHelpers')
 const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
 const { canTriggerFinalPayment } = require('../utils/bookingValidation')
 const { ensureStripeCustomer, syncClientStripeCustomerId } = require('../utils/stripeCustomer')
@@ -163,7 +166,11 @@ exports.createCheckout = async (req, res) => {
       }
     }
 
-    const { platformCommission, proShare } = computeCommission(depositAmount, commissionPercent)
+    const { platformCommission, proShare } = buildPaymentCommission({
+      amountEur         : depositAmount,
+      commissionPercent,
+      context           : COMMISSION_CONTEXT.DEPOSIT
+    })
     const amountCents = eurosToCents(depositAmount)
     const frontendUrl = getFrontendUrl()
     const stripeCustomerId = await ensureStripeCustomer({ stripe, client })
@@ -184,6 +191,7 @@ exports.createCheckout = async (req, res) => {
       discountPercent,
       platformCommission,
       proShare,
+      commissionContext : COMMISSION_CONTEXT.DEPOSIT,
       halfPriceApplied,
       status         : 'pending'
     })

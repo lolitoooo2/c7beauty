@@ -52,6 +52,27 @@
         <span class="pay-meta-label">No-show</span>
         <span class="pay-meta-value">{{ noShow.statusLabel }}</span>
       </div>
+      <template v-if="commission">
+        <div class="pay-meta-row">
+          <span class="pay-meta-label">Commission C7'Beauty</span>
+          <span class="pay-meta-value">{{ formatEur(commission.totalPlatformCommission) }}</span>
+        </div>
+        <div class="pay-meta-row">
+          <span class="pay-meta-label">Part professionnel</span>
+          <span class="pay-meta-value">{{ formatEur(commission.totalProShare) }}</span>
+        </div>
+      </template>
+    </div>
+
+    <div v-else-if="commission" class="pay-block__meta">
+      <div class="pay-meta-row">
+        <span class="pay-meta-label">Commission C7'Beauty</span>
+        <span class="pay-meta-value">{{ formatEur(commission.totalPlatformCommission) }}</span>
+      </div>
+      <div class="pay-meta-row">
+        <span class="pay-meta-label">Part professionnel</span>
+        <span class="pay-meta-value">{{ formatEur(commission.totalProShare) }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -66,6 +87,21 @@ export interface PaymentSummary {
   depositAmount: number | null
   remainingAmount: number | null
   depositPercent?: number | null
+}
+
+export interface CommissionSummary {
+  totalCollected: number
+  totalPlatformCommission: number
+  totalProShare: number
+  history?: Array<{
+    context: string
+    contextLabel: string
+    amount: number
+    commissionPercent: number
+    platformCommission: number
+    proShare: number
+    at: string
+  }>
 }
 
 export interface StatusInfo {
@@ -86,6 +122,7 @@ export interface StatusInfo {
 
 const props = defineProps<{
   payment: PaymentSummary
+  commission?: CommissionSummary | null
   serviceValidation?: StatusInfo | null
   dispute?: StatusInfo | null
   noShow?: StatusInfo | null

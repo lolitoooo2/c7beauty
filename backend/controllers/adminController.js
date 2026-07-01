@@ -329,6 +329,7 @@ function formatAdminPayment (p) {
     commissionPercent  : p.commissionPercent,
     platformCommission : p.platformCommission,
     proShare           : p.proShare,
+    commissionContext  : p.commissionContext || p.paymentPhase || 'deposit',
     clientName         : client ? `${client.firstName} ${client.lastName}`.trim() : '—',
     clientEmail        : client?.email || '—',
     salonName          : pro?.salonName || '—',

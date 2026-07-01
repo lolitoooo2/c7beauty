@@ -53,6 +53,22 @@ const bookingSchema = new mongoose.Schema(
       default : null
     },
 
+    financial : {
+      totalCollected          : { type: Number, default: 0 },
+      totalPlatformCommission : { type: Number, default: 0 },
+      totalProShare           : { type: Number, default: 0 },
+      history : [{
+        context            : { type: String, required: true },
+        contextLabel       : { type: String, default: null },
+        amount             : { type: Number, required: true },
+        commissionPercent  : { type: Number, required: true },
+        platformCommission : { type: Number, required: true },
+        proShare           : { type: Number, required: true },
+        paymentId          : { type: mongoose.Schema.Types.ObjectId, ref: 'Payment', default: null },
+        at                 : { type: Date, default: Date.now }
+      }]
+    },
+
     validation : {
       workflowStatus : {
         type    : String,

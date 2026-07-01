@@ -385,7 +385,7 @@
                 <td>{{ p.remainingAmount?.toFixed(2) ?? '0.00' }} €</td>
                 <td>
                   <span class="cell-name">{{ p.platformCommission?.toFixed(2) }} €</span>
-                  <span class="cell-sub">{{ p.commissionPercent ?? '—' }} %</span>
+                  <span class="cell-sub">Pro : {{ p.proShare?.toFixed(2) }} € · {{ p.commissionPercent ?? '—' }} %</span>
                 </td>
                 <td><code>{{ p.validationStatus || '—' }}</code></td>
                 <td>

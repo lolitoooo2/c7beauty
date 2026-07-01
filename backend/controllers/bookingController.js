@@ -1,4 +1,5 @@
 const Booking      = require('../models/Booking')
+const Payment      = require('../models/Payment')
 const SlotHold     = require('../models/SlotHold')
 const Service      = require('../models/Service')
 const Collaborator = require('../models/Collaborator')
@@ -16,7 +17,6 @@ const {
   getLoyaltyPreview
 } = require('../utils/loyaltyHelpers')
 const { isStripeEnabled } = require('../utils/stripeHelpers')
-const { getPlatformSettings } = require('../utils/platformSettings')
 const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
 const {
@@ -443,7 +443,7 @@ exports.cancelByCollaborator = async (req, res) => {
 function buildProStatsFilter (proId, collaboratorId) {
   const filter = {
     proId  : new mongoose.Types.ObjectId(String(proId)),
-    status : 'confirmed'
+    status : { $in: ['confirmed', 'completed'] }
   }
   if (collaboratorId) {
     filter.collaboratorId = new mongoose.Types.ObjectId(String(collaboratorId))
@@ -455,24 +455,44 @@ function inRangeFilter (bounds) {
   return { start: { $gte: bounds.start, $lt: bounds.end } }
 }
 
-async function sumBookingRevenue (filter, bounds) {
-  const [result] = await Booking.aggregate([
-    { $match: { ...filter, ...inRangeFilter(bounds) } },
-    { $group: { _id: null, total: { $sum: { $ifNull: ['$price', 0] } } } }
-  ])
-  return result?.total ?? 0
-}
+async function sumPaymentSharesForBookings (filter, bounds) {
+  const bookingIds = await Booking.find({
+    ...filter,
+    ...inRangeFilter(bounds)
+  }).distinct('_id')
 
-function toProShare (grossEur, commissionPercent) {
-  const net = grossEur * (1 - commissionPercent / 100)
-  return Math.round(net * 100) / 100
+  if (!bookingIds.length) {
+    return { proShare: 0, platformCommission: 0, gross: 0 }
+  }
+
+  const [result] = await Payment.aggregate([
+    {
+      $match: {
+        bookingId : { $in: bookingIds },
+        status    : 'succeeded'
+      }
+    },
+    {
+      $group: {
+        _id                : null,
+        proShare           : { $sum: '$proShare' },
+        platformCommission : { $sum: '$platformCommission' },
+        gross              : { $sum: '$amount' }
+      }
+    }
+  ])
+
+  return {
+    proShare           : result?.proShare ?? 0,
+    platformCommission : result?.platformCommission ?? 0,
+    gross              : result?.gross ?? 0
+  }
 }
 
 exports.getProStats = async (req, res) => {
   try {
     const proId = req.userId
     const filter = buildProStatsFilter(proId, req.query.collaboratorId || null)
-    const { commissionPercent } = await getPlatformSettings()
 
     const dayBounds   = getPeriodBoundsParis('day')
     const weekBounds  = getPeriodBoundsParis('week')
@@ -484,9 +504,9 @@ exports.getProStats = async (req, res) => {
       monthCount,
       totalConfirmed,
       totalCancelled,
-      grossToday,
-      grossWeek,
-      grossMonth,
+      sharesToday,
+      sharesWeek,
+      sharesMonth,
       nextBooking
     ] = await Promise.all([
       Booking.countDocuments({ ...filter, ...inRangeFilter(dayBounds) }),
@@ -498,9 +518,9 @@ exports.getProStats = async (req, res) => {
         status : 'cancelled',
         ...(filter.collaboratorId ? { collaboratorId: filter.collaboratorId } : {})
       }),
-      sumBookingRevenue(filter, dayBounds),
-      sumBookingRevenue(filter, weekBounds),
-      sumBookingRevenue(filter, monthBounds),
+      sumPaymentSharesForBookings(filter, dayBounds),
+      sumPaymentSharesForBookings(filter, weekBounds),
+      sumPaymentSharesForBookings(filter, monthBounds),
       Booking.findOne({ ...filter, start: { $gte: new Date() } })
         .sort({ start: 1 })
         .populate('clientId', 'firstName lastName phone')
@@ -513,12 +533,15 @@ exports.getProStats = async (req, res) => {
       monthCount,
       totalConfirmed,
       totalCancelled,
-      revenueToday  : toProShare(grossToday, commissionPercent),
-      revenueWeek   : toProShare(grossWeek, commissionPercent),
-      revenueMonth  : toProShare(grossMonth, commissionPercent),
-      revenueTodayGross : grossToday,
-      revenueWeekGross  : grossWeek,
-      revenueMonthGross : grossMonth,
+      revenueToday  : sharesToday.proShare,
+      revenueWeek   : sharesWeek.proShare,
+      revenueMonth  : sharesMonth.proShare,
+      revenueTodayGross : sharesToday.gross,
+      revenueWeekGross  : sharesWeek.gross,
+      revenueMonthGross : sharesMonth.gross,
+      commissionToday   : sharesToday.platformCommission,
+      commissionWeek    : sharesWeek.platformCommission,
+      commissionMonth   : sharesMonth.platformCommission,
       nextBooking   : nextBooking
         ? {
             _id         : nextBooking._id,

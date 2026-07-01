@@ -1,4 +1,5 @@
 const { computeRemainingAmount } = require('./platformSettings')
+const { buildCommissionView } = require('./commissionHelpers')
 const {
   buildValidationView,
   WORKFLOW_STATUS
@@ -176,6 +177,7 @@ function enrichBooking (base, raw) {
   return {
     ...base,
     payment           : buildPaymentSummary(raw),
+    commission        : buildCommissionView(raw),
     serviceValidation : buildServiceValidation(raw),
     dispute           : buildDisputeInfo(raw),
     noShow            : buildNoShowInfo(raw)

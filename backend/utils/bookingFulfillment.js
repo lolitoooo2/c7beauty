@@ -15,6 +15,7 @@ const {
 } = require('./platformSettings')
 const { createInitialValidation } = require('./bookingValidation')
 const { ensureBookingConfirmationEmailSent } = require('./bookingEmailHelpers')
+const { recordCommissionForPayment } = require('./commissionHelpers')
 
 async function loadPopulatedBooking (bookingId) {
   return Booking.findById(bookingId)
@@ -182,17 +183,22 @@ async function fulfillHoldToBooking ({
 
   await SlotHold.findByIdAndDelete(hold._id)
 
+  let paymentDoc = null
   if (paymentId) {
-    await Payment.findByIdAndUpdate(paymentId, {
-      status                : 'succeeded',
-      bookingId             : booking._id,
-      halfPriceApplied,
-      discountPercent,
-      cashbackEarned,
-      stripePaymentIntentId : stripePaymentIntentId || undefined
-    })
+    paymentDoc = await Payment.findByIdAndUpdate(
+      paymentId,
+      {
+        status                : 'succeeded',
+        bookingId             : booking._id,
+        halfPriceApplied,
+        discountPercent,
+        cashbackEarned,
+        stripePaymentIntentId : stripePaymentIntentId || undefined
+      },
+      { new: true }
+    )
   } else if (stripeSessionId) {
-    await Payment.findOneAndUpdate(
+    paymentDoc = await Payment.findOneAndUpdate(
       { stripeSessionId },
       {
         status                : 'succeeded',
@@ -201,8 +207,13 @@ async function fulfillHoldToBooking ({
         discountPercent,
         cashbackEarned,
         stripePaymentIntentId : stripePaymentIntentId || undefined
-      }
+      },
+      { new: true }
     )
+  }
+
+  if (paymentDoc) {
+    await recordCommissionForPayment({ booking, payment: paymentDoc })
   }
 
   const populated = await loadPopulatedBooking(booking._id)

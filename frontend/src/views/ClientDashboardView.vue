@@ -125,6 +125,7 @@
             <BookingPaymentSummary
               v-if="nextBooking.payment"
               :payment="nextBooking.payment"
+              :commission="nextBooking.commission"
               variant="compact"
               class="booking-card__pay"
             />
@@ -167,6 +168,7 @@
                 <BookingPaymentSummary
                   v-if="b.payment"
                   :payment="b.payment"
+                  :commission="b.commission"
                   :service-validation="b.serviceValidation"
                   :dispute="b.dispute"
                   variant="compact"
@@ -205,6 +207,7 @@
                 <BookingPaymentSummary
                   v-if="b.payment"
                   :payment="b.payment"
+                  :commission="b.commission"
                   :service-validation="b.serviceValidation"
                   :dispute="b.dispute"
                   variant="compact"
@@ -396,6 +399,7 @@ import { useToast } from '@/composables/useToast'
 import type { ClientUser } from '@/stores/auth'
 import BookingPaymentSummary, {
   type PaymentSummary,
+  type CommissionSummary,
   type StatusInfo
 } from '@/components/BookingPaymentSummary.vue'
 
@@ -413,6 +417,7 @@ interface BookingItem {
   serviceName: string
   price: number
   payment?: PaymentSummary
+  commission?: CommissionSummary | null
   serviceValidation?: StatusInfo
   dispute?: StatusInfo
   pro?: { salonName: string; address?: string; city?: string; postalCode?: string }

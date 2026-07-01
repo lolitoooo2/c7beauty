@@ -4,6 +4,10 @@ const {
   DEFAULT_COMMISSION_PERCENT
 } = require('../models/PlatformSettings')
 
+const {
+  computeCommissionSplit
+} = require('./commissionHelpers')
+
 async function getPlatformSettings () {
   let settings = await PlatformSettings.findOne({ key: 'global' })
   if (!settings) {
@@ -32,10 +36,7 @@ function computeRemainingAmount (totalPriceEur, depositAmountEur) {
 }
 
 function computeCommission (amountEur, commissionPercent) {
-  const rate = commissionPercent / 100
-  const platformCommission = Math.round(amountEur * rate * 100) / 100
-  const proShare           = Math.round((amountEur - platformCommission) * 100) / 100
-  return { platformCommission, proShare }
+  return computeCommissionSplit(amountEur, commissionPercent)
 }
 
 function validatePercent (value, label) {

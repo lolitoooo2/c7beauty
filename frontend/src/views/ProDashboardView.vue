@@ -897,6 +897,7 @@
           <BookingPaymentSummary
             v-if="bookingDetailModal.payment"
             :payment="bookingDetailModal.payment"
+            :commission="bookingDetailModal.commission"
             :service-validation="bookingDetailModal.serviceValidation"
             :dispute="bookingDetailModal.dispute"
             :no-show="bookingDetailModal.noShow"
@@ -1039,6 +1040,7 @@ import AgendaCalendar from '@/components/AgendaCalendar.vue'
 import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor.vue'
 import BookingPaymentSummary, {
   type PaymentSummary,
+  type CommissionSummary,
   type StatusInfo
 } from '@/components/BookingPaymentSummary.vue'
 
@@ -1693,6 +1695,7 @@ interface AgendaBooking {
   duration?: number
   price?: number
   payment?: PaymentSummary
+  commission?: CommissionSummary | null
   serviceValidation?: StatusInfo
   dispute?: StatusInfo
   noShow?: StatusInfo
@@ -1710,6 +1713,7 @@ const bookingDetailModal = reactive({
   duration           : 0,
   price              : null as number | null,
   payment            : null as PaymentSummary | null,
+  commission         : null as CommissionSummary | null,
   serviceValidation  : null as StatusInfo | null,
   dispute            : null as StatusInfo | null,
   noShow             : null as StatusInfo | null,
@@ -1757,6 +1761,7 @@ function openBookingDetailFromEvent (payload: {
   duration?: number
   price?: number
   payment?: PaymentSummary | null
+  commission?: CommissionSummary | null
   serviceValidation?: StatusInfo | null
   dispute?: StatusInfo | null
   noShow?: StatusInfo | null
@@ -1773,6 +1778,7 @@ function openBookingDetailFromEvent (payload: {
     duration          : payload.duration || 0,
     price             : payload.price ?? null,
     payment           : payload.payment ?? null,
+    commission        : payload.commission ?? null,
     serviceValidation : payload.serviceValidation ?? null,
     dispute           : payload.dispute ?? null,
     noShow            : payload.noShow ?? null,
@@ -1793,6 +1799,7 @@ function openBookingDetail (b: AgendaBooking) {
     duration          : b.duration,
     price             : b.price,
     payment           : b.payment ?? null,
+    commission        : b.commission ?? null,
     serviceValidation : b.serviceValidation ?? null,
     dispute           : b.dispute ?? null,
     noShow            : b.noShow ?? null,

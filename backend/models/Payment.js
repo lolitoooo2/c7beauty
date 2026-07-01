@@ -47,6 +47,12 @@ const paymentSchema = new mongoose.Schema(
     platformCommission : { type: Number, required: true },
     proShare           : { type: Number, required: true },
 
+    commissionContext : {
+      type    : String,
+      enum    : ['deposit', 'balance', 'no_show'],
+      default : null
+    },
+
     halfPriceApplied : { type: Boolean, default: false },
     cashbackEarned   : { type: Number, default: 0 },
 
