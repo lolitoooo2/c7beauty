@@ -167,11 +167,25 @@
                 <BookingPaymentSummary
                   v-if="b.payment"
                   :payment="b.payment"
+                  :service-validation="b.serviceValidation"
+                  :dispute="b.dispute"
                   variant="compact"
                   class="booking-card__pay"
                 />
               </div>
-              <button type="button" class="btn-outline danger" @click="cancelBooking(b._id)">Annuler</button>
+              <div class="booking-card__actions">
+                <button
+                  v-if="b.serviceValidation?.canValidateAsClient"
+                  type="button"
+                  class="btn-primary btn-compact"
+                  :disabled="validatingBookingId === b._id"
+                  @click="validateClientBooking(b._id)"
+                >
+                  <Loader2 v-if="validatingBookingId === b._id" :size="14" class="spin" />
+                  Confirmer la prestation
+                </button>
+                <button type="button" class="btn-outline danger" @click="cancelBooking(b._id)">Annuler</button>
+              </div>
             </article>
           </div>
 
@@ -189,9 +203,20 @@
                 <BookingPaymentSummary
                   v-if="b.payment"
                   :payment="b.payment"
+                  :service-validation="b.serviceValidation"
                   variant="compact"
                   class="booking-card__pay"
                 />
+                <button
+                  v-if="b.serviceValidation?.canValidateAsClient"
+                  type="button"
+                  class="btn-primary btn-compact"
+                  :disabled="validatingBookingId === b._id"
+                  @click="validateClientBooking(b._id)"
+                >
+                  <Loader2 v-if="validatingBookingId === b._id" :size="14" class="spin" />
+                  Confirmer la prestation
+                </button>
               </div>
             </article>
           </div>
@@ -356,10 +381,13 @@ interface BookingItem {
   serviceName: string
   price: number
   payment?: PaymentSummary
+  serviceValidation?: StatusInfo
   dispute?: StatusInfo
   pro?: { salonName: string; address?: string; city?: string; postalCode?: string }
   collaborator?: { firstName: string; lastName: string; photo?: string | null }
 }
+
+const validatingBookingId = ref<string | null>(null)
 
 const bookingsLoading   = ref(false)
 const upcomingBookings  = ref<BookingItem[]>([])
@@ -574,6 +602,25 @@ async function cancelBooking (id: string) {
     fetchBookings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : 'Erreur')
+  }
+}
+
+async function validateClientBooking (id: string) {
+  if (!confirm('Confirmer que la prestation s\'est bien déroulée ?')) return
+  validatingBookingId.value = id
+  try {
+    const res = await fetch(`/api/client/bookings/${id}/validate`, {
+      method  : 'PATCH',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Prestation confirmée.')
+    fetchBookings()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  } finally {
+    validatingBookingId.value = null
   }
 }
 
@@ -940,6 +987,20 @@ body { margin: 0; }
 
 .booking-card--row { align-items: flex-start; }
 .booking-card.muted { opacity: 0.75; }
+
+.booking-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-compact {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
 
 .booking-card__main h3 {
   font-family: "Montserrat", sans-serif;

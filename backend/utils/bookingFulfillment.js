@@ -13,6 +13,7 @@ const {
   computeDepositAmount,
   computeRemainingAmount
 } = require('./platformSettings')
+const { createInitialValidation } = require('./bookingValidation')
 const { ensureBookingConfirmationEmailSent } = require('./bookingEmailHelpers')
 
 async function loadPopulatedBooking (bookingId) {
@@ -165,7 +166,8 @@ async function fulfillHoldToBooking ({
     remainingAmount,
     originalPrice,
     discountPercent,
-    cashbackEarned : 0
+    cashbackEarned : 0,
+    validation     : createInitialValidation(remainingAmount ?? 0)
   })
 
   const { cashbackEarned } = await applyLoyaltyAfterBooking(client, {

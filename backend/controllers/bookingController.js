@@ -19,6 +19,10 @@ const { isStripeEnabled } = require('../utils/stripeHelpers')
 const { getPlatformSettings } = require('../utils/platformSettings')
 const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
+const {
+  validateByPro,
+  validateByClient
+} = require('../utils/bookingValidation')
 
 function parseSlotTimes (dateStr, startTime, duration) {
   const start = dateAtTime(dateStr, startTime)
@@ -242,6 +246,29 @@ exports.listForClient = async (req, res) => {
   }
 }
 
+// ── PATCH /api/client/bookings/:id/validate ───────────
+exports.validateByClient = async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id      : req.params.id,
+      clientId : req.userId,
+      status   : 'confirmed'
+    })
+
+    if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
+
+    await validateByClient({ booking, clientId: req.userId })
+
+    res.json({
+      message : 'Prestation confirmée. Période de contestation de 24h ouverte.',
+      booking : formatBooking(booking.toObject())
+    })
+  } catch (err) {
+    console.error('[booking.validateByClient]', err)
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
 // ── PATCH /api/client/bookings/:id/cancel ─────────────
 exports.cancelByClient = async (req, res) => {
   try {
@@ -291,6 +318,29 @@ exports.listForPro = async (req, res) => {
   } catch (err) {
     console.error('[booking.listForPro]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+// ── PATCH /api/pro/bookings/:id/validate ─────────────
+exports.validateByPro = async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id   : req.params.id,
+      proId : req.userId,
+      status: 'confirmed'
+    })
+
+    if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
+
+    await validateByPro({ booking, proId: req.userId })
+
+    res.json({
+      message : 'Prestation validée côté professionnel.',
+      booking : formatBooking(booking.toObject())
+    })
+  } catch (err) {
+    console.error('[booking.validateByPro]', err)
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
   }
 }
 

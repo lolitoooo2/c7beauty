@@ -335,6 +335,7 @@ function formatAdminPayment (p) {
     serviceName        : booking?.serviceName || '—',
     bookingStart       : booking?.start || null,
     bookingStatus      : booking?.status || null,
+    validationStatus   : booking?.validation?.workflowStatus || null,
     createdAt          : p.createdAt
   }
 }
@@ -352,7 +353,7 @@ exports.getPayments = async (req, res) => {
         .sort('-createdAt')
         .populate('clientId', 'firstName lastName email')
         .populate('proId', 'salonName')
-        .populate('bookingId', 'serviceName start status'),
+        .populate('bookingId', 'serviceName start status validation'),
       Number(page),
       Number(limit)
     )

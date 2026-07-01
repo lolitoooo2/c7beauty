@@ -17,5 +17,6 @@ const booking = require('../controllers/bookingController')
 router.get('/loyalty/preview',     booking.previewLoyalty)
 router.get('/bookings',              booking.listForClient)
 router.patch('/bookings/:id/cancel', booking.cancelByClient)
+router.patch('/bookings/:id/validate', booking.validateByClient)
 
 module.exports = router

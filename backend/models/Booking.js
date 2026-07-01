@@ -51,6 +51,32 @@ const bookingSchema = new mongoose.Schema(
       type : String,
       enum : ['client', 'pro', 'collaborator', null],
       default : null
+    },
+
+    validation : {
+      workflowStatus : {
+        type    : String,
+        enum    : [
+          'not_applicable',
+          'pending_service',
+          'awaiting_pro',
+          'awaiting_client',
+          'contestation',
+          'ready_for_payment',
+          'final_payment_done'
+        ],
+        default : null
+      },
+      contestationEndsAt : { type: Date, default: null },
+      finalPaymentAt     : { type: Date, default: null },
+      disputeOpen        : { type: Boolean, default: false },
+      history : [{
+        action   : { type: String, required: true },
+        by       : { type: String, required: true },
+        byUserId : { type: mongoose.Schema.Types.ObjectId, default: null },
+        at       : { type: Date, default: Date.now },
+        note     : { type: String, default: null }
+      }]
     }
   },
   {

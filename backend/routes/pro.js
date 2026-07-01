@@ -55,6 +55,7 @@ const booking = require('../controllers/bookingController')
 router.get('/bookings', booking.listForPro)
 router.get('/stats', booking.getProStats)
 router.patch('/bookings/:id/cancel', booking.cancelByPro)
+router.patch('/bookings/:id/validate', booking.validateByPro)
 
 // Photos du salon
 router.post('/photos',             shopsUpload.single('photo'), addShopPhoto)

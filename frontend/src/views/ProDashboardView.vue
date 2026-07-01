@@ -903,8 +903,23 @@
             show-meta
             class="booking-detail__pay"
           />
+          <ul v-if="bookingDetailModal.serviceValidation?.history?.length" class="booking-detail__history">
+            <li v-for="(entry, idx) in bookingDetailModal.serviceValidation.history" :key="idx">
+              {{ formatValidationHistory(entry) }}
+            </li>
+          </ul>
         </div>
         <div class="svc-modal__footer">
+          <button
+            v-if="bookingDetailModal.serviceValidation?.canValidateAsPro"
+            type="button"
+            class="btn-primary"
+            :disabled="bookingDetailModal.validateLoading"
+            @click="validateProBooking"
+          >
+            <Loader2 v-if="bookingDetailModal.validateLoading" :size="14" class="spin" />
+            Confirmer la prestation
+          </button>
           <button
             v-if="bookingDetailIsFuture && bookingDetailModal.bookingId"
             type="button"
@@ -1699,7 +1714,8 @@ const bookingDetailModal = reactive({
   dispute            : null as StatusInfo | null,
   noShow             : null as StatusInfo | null,
   startIso           : '',
-  cancelLoading      : false
+  cancelLoading      : false,
+  validateLoading    : false
 })
 
 const agendaBookingsGrouped = computed(() => {
@@ -1761,7 +1777,8 @@ function openBookingDetailFromEvent (payload: {
     dispute           : payload.dispute ?? null,
     noShow            : payload.noShow ?? null,
     startIso          : payload.startIso || '',
-    cancelLoading     : false
+    cancelLoading     : false,
+    validateLoading   : false
   })
 }
 
@@ -1787,6 +1804,47 @@ const bookingDetailIsFuture = computed(() => {
   if (!bookingDetailModal.startIso) return false
   return new Date(bookingDetailModal.startIso) > new Date()
 })
+
+function formatValidationHistory (entry: { action: string; by: string; at: string; note?: string | null }) {
+  const when = new Date(entry.at).toLocaleString('fr-FR', {
+    timeZone : 'Europe/Paris',
+    day      : 'numeric',
+    month    : 'short',
+    hour     : '2-digit',
+    minute   : '2-digit'
+  })
+  const labels: Record<string, string> = {
+    pro_validated         : 'Validé par le professionnel',
+    client_validated      : 'Validé par le client',
+    contestation_started  : 'Période de contestation ouverte',
+    ready_for_payment     : 'Prêt pour paiement final'
+  }
+  const label = labels[entry.action] || entry.action
+  return `${when} — ${label}`
+}
+
+async function validateProBooking () {
+  if (!bookingDetailModal.bookingId || !bookingDetailModal.serviceValidation?.canValidateAsPro) return
+  if (!confirm('Confirmer que la prestation a bien été réalisée ?')) return
+
+  bookingDetailModal.validateLoading = true
+  try {
+    const res = await fetch(`/api/pro/bookings/${bookingDetailModal.bookingId}/validate`, {
+      method  : 'PATCH',
+      headers : { Authorization: `Bearer ${authStore.token}` }
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+
+    toast.success('Prestation validée.')
+    bookingDetailModal.open = false
+    await fetchAgendaBookings()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  } finally {
+    bookingDetailModal.validateLoading = false
+  }
+}
 
 async function cancelProBooking () {
   if (!bookingDetailModal.bookingId || !bookingDetailIsFuture.value) return
@@ -2464,6 +2522,14 @@ body { margin: 0; }
 
 .booking-detail__pay {
   margin-top: 1rem;
+}
+
+.booking-detail__history {
+  margin: 0.85rem 0 0;
+  padding-left: 1.1rem;
+  color: #666;
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 .page-title {

@@ -19,6 +19,7 @@ const {
   computeCommission
 } = require('../utils/platformSettings')
 const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
+const { canTriggerFinalPayment } = require('../utils/bookingValidation')
 
 function checkoutPayload (session) {
   return {
@@ -299,3 +300,6 @@ exports.getCheckoutStatus = async (req, res) => {
     res.status(500).json({ message: 'Erreur serveur.' })
   }
 }
+
+// Garde-fou JIRA-04 — solde prélevable uniquement si validations complètes
+exports.canChargeBalance = canTriggerFinalPayment

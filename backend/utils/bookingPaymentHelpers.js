@@ -1,4 +1,8 @@
 const { computeRemainingAmount } = require('./platformSettings')
+const {
+  buildValidationView,
+  WORKFLOW_STATUS
+} = require('./bookingValidation')
 
 function resolveRemainingAmount (booking) {
   if (booking.remainingAmount != null) return booking.remainingAmount
@@ -35,6 +39,30 @@ function buildPaymentSummary (booking) {
     }
   }
 
+  const validation = buildValidationView(booking)
+
+  if (validation.canTriggerFinalPayment) {
+    return {
+      status          : 'ready_for_final',
+      statusLabel     : 'Solde prêt à être prélevé',
+      totalPrice,
+      depositAmount,
+      remainingAmount,
+      depositPercent  : booking.depositPercent ?? null
+    }
+  }
+
+  if (validation.workflowStatus === WORKFLOW_STATUS.FINAL_PAYMENT_DONE) {
+    return {
+      status          : 'paid_in_full',
+      statusLabel     : 'Soldé',
+      totalPrice,
+      depositAmount,
+      remainingAmount : 0,
+      depositPercent  : booking.depositPercent ?? null
+    }
+  }
+
   if (remainingAmount > 0) {
     return {
       status          : 'deposit_paid',
@@ -57,23 +85,32 @@ function buildPaymentSummary (booking) {
 }
 
 function buildServiceValidation (booking) {
-  if (booking.status === 'cancelled') {
-    return { status: 'cancelled', statusLabel: 'Annulé', canValidate: false }
-  }
-  if (booking.status === 'completed') {
-    return { status: 'validated', statusLabel: 'Prestation validée', canValidate: false }
-  }
-  if (new Date(booking.start) > new Date()) {
-    return { status: 'upcoming', statusLabel: 'Prestation à venir', canValidate: false }
-  }
-  return {
-    status        : 'awaiting_validation',
-    statusLabel   : 'En attente de validation',
-    canValidate   : false
-  }
+  return buildValidationView(booking)
 }
 
-function buildDisputeInfo () {
+function buildDisputeInfo (booking) {
+  const validation = buildValidationView(booking)
+
+  if (validation.workflowStatus === WORKFLOW_STATUS.CONTESTATION) {
+    return {
+      available   : true,
+      status      : 'contestation',
+      statusLabel : validation.statusLabel,
+      deadline    : validation.contestationEndsAt,
+      canReport   : false
+    }
+  }
+
+  if (validation.workflowStatus === WORKFLOW_STATUS.READY_FOR_PAYMENT) {
+    return {
+      available   : false,
+      status      : 'closed',
+      statusLabel : 'Contestation terminée',
+      deadline    : null,
+      canReport   : false
+    }
+  }
+
   return {
     available   : false,
     status      : 'not_started',

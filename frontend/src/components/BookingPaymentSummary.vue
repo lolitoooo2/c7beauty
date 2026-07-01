@@ -24,7 +24,11 @@
         <span class="pay-meta-label">Validation</span>
         <span class="pay-meta-value">{{ serviceValidation.statusLabel }}</span>
       </div>
-      <div v-if="dispute" class="pay-meta-row">
+      <div v-if="dispute?.deadline" class="pay-meta-row">
+        <span class="pay-meta-label">Contestation</span>
+        <span class="pay-meta-value">{{ dispute.statusLabel }}</span>
+      </div>
+      <div v-else-if="dispute && dispute.status !== 'not_started'" class="pay-meta-row">
         <span class="pay-meta-label">Contestation</span>
         <span class="pay-meta-value">{{ dispute.statusLabel }}</span>
       </div>
@@ -50,8 +54,13 @@ export interface StatusInfo {
   status: string
   statusLabel: string
   canValidate?: boolean
+  canValidateAsPro?: boolean
+  canValidateAsClient?: boolean
+  contestationEndsAt?: string | null
+  canTriggerFinalPayment?: boolean
   canReport?: boolean
   canMark?: boolean
+  history?: Array<{ action: string; by: string; at: string; note?: string | null }>
 }
 
 defineProps<{

@@ -363,12 +363,13 @@
                 <th>Acompte</th>
                 <th>Solde</th>
                 <th>Commission</th>
+                <th>Validation</th>
                 <th>Statut</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-if="payments.loading"><td colspan="8" class="loading-row"><div class="spinner-sm"></div> Chargement…</td></tr>
-              <tr v-else-if="!payments.list.length"><td colspan="8" class="empty-row">Aucun paiement enregistré.</td></tr>
+              <tr v-if="payments.loading"><td colspan="9" class="loading-row"><div class="spinner-sm"></div> Chargement…</td></tr>
+              <tr v-else-if="!payments.list.length"><td colspan="9" class="empty-row">Aucun paiement enregistré.</td></tr>
               <tr v-for="p in payments.list" :key="p._id">
                 <td>{{ formatDate(p.createdAt) }}</td>
                 <td>
@@ -386,6 +387,7 @@
                   <span class="cell-name">{{ p.platformCommission?.toFixed(2) }} €</span>
                   <span class="cell-sub">{{ p.commissionPercent ?? '—' }} %</span>
                 </td>
+                <td><code>{{ p.validationStatus || '—' }}</code></td>
                 <td><span class="pay-admin-badge" :class="p.status">{{ p.statusLabel }}</span></td>
               </tr>
             </tbody>
