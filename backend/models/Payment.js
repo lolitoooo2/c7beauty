@@ -5,7 +5,7 @@ const paymentSchema = new mongoose.Schema(
     holdId : {
       type     : mongoose.Schema.Types.ObjectId,
       ref      : 'SlotHold',
-      required : true,
+      default  : null,
       index    : true
     },
     bookingId : {
@@ -54,6 +54,13 @@ const paymentSchema = new mongoose.Schema(
       type    : String,
       enum    : ['pending', 'succeeded', 'failed', 'expired'],
       default : 'pending',
+      index   : true
+    },
+
+    paymentPhase : {
+      type    : String,
+      enum    : ['deposit', 'balance'],
+      default : 'deposit',
       index   : true
     }
   },

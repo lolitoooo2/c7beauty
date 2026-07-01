@@ -170,7 +170,9 @@
                   :service-validation="b.serviceValidation"
                   :dispute="b.dispute"
                   variant="compact"
+                  show-meta
                   class="booking-card__pay"
+                  @report-dispute="openDisputeModal(b._id)"
                 />
               </div>
               <div class="booking-card__actions">
@@ -204,8 +206,11 @@
                   v-if="b.payment"
                   :payment="b.payment"
                   :service-validation="b.serviceValidation"
+                  :dispute="b.dispute"
                   variant="compact"
+                  show-meta
                   class="booking-card__pay"
+                  @report-dispute="openDisputeModal(b._id)"
                 />
                 <button
                   v-if="b.serviceValidation?.canValidateAsClient"
@@ -349,6 +354,33 @@
 
     </div>
   </div>
+
+  <div v-if="disputeModal.open" class="modal-overlay" @click.self="disputeModal.open = false">
+    <div class="dispute-modal">
+      <h3>Signaler un problème</h3>
+      <p class="dispute-modal__hint">
+        Décrivez brièvement le problème rencontré. Le paiement du solde sera suspendu le temps du traitement.
+      </p>
+      <textarea
+        v-model="disputeModal.reason"
+        rows="4"
+        maxlength="1000"
+        placeholder="Motif du litige (optionnel)"
+      />
+      <div class="dispute-modal__actions">
+        <button type="button" class="btn-outline" @click="disputeModal.open = false">Annuler</button>
+        <button
+          type="button"
+          class="btn-primary danger"
+          :disabled="disputingBookingId === disputeModal.bookingId"
+          @click="submitDispute"
+        >
+          <Loader2 v-if="disputingBookingId === disputeModal.bookingId" :size="14" class="spin" />
+          Confirmer le litige
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -388,6 +420,12 @@ interface BookingItem {
 }
 
 const validatingBookingId = ref<string | null>(null)
+const disputingBookingId  = ref<string | null>(null)
+const disputeModal = reactive({
+  open      : false,
+  bookingId : '',
+  reason    : ''
+})
 
 const bookingsLoading   = ref(false)
 const upcomingBookings  = ref<BookingItem[]>([])
@@ -615,12 +653,42 @@ async function validateClientBooking (id: string) {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.message)
-    toast.success('Prestation confirmée.')
+    toast.success('Prestation confirmée. Vous disposez de 24h pour signaler un problème.')
     fetchBookings()
   } catch (err: unknown) {
     toast.error(err instanceof Error ? err.message : 'Erreur')
   } finally {
     validatingBookingId.value = null
+  }
+}
+
+function openDisputeModal (id: string) {
+  disputeModal.open      = true
+  disputeModal.bookingId = id
+  disputeModal.reason    = ''
+}
+
+async function submitDispute () {
+  if (!disputeModal.bookingId) return
+  disputingBookingId.value = disputeModal.bookingId
+  try {
+    const res = await fetch(`/api/client/bookings/${disputeModal.bookingId}/dispute`, {
+      method  : 'PATCH',
+      headers : {
+        'Content-Type' : 'application/json',
+        Authorization  : `Bearer ${authStore.token}`
+      },
+      body: JSON.stringify({ reason: disputeModal.reason.trim() || undefined })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.message)
+    toast.success('Litige enregistré. Le paiement du solde est suspendu.')
+    disputeModal.open = false
+    fetchBookings()
+  } catch (err: unknown) {
+    toast.error(err instanceof Error ? err.message : 'Erreur')
+  } finally {
+    disputingBookingId.value = null
   }
 }
 
@@ -1275,6 +1343,66 @@ body { margin: 0; }
   inset: 0;
   background: rgba(0,0,0,0.4);
   z-index: 49;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.dispute-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 420px;
+  padding: 1.25rem;
+  box-shadow: 0 20px 60px rgba(0,0,0,.18);
+}
+
+.dispute-modal h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  color: #2C1810;
+}
+
+.dispute-modal__hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  color: #666;
+  line-height: 1.45;
+}
+
+.dispute-modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ece6ea;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.dispute-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.btn-primary.danger {
+  background: #b42318;
+  border-color: #b42318;
+}
+
+.btn-primary.danger:hover {
+  background: #912018;
 }
 
 @media (max-width: 900px) {

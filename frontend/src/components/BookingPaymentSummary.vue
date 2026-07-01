@@ -24,7 +24,23 @@
         <span class="pay-meta-label">Validation</span>
         <span class="pay-meta-value">{{ serviceValidation.statusLabel }}</span>
       </div>
-      <div v-if="dispute?.deadline" class="pay-meta-row">
+      <div v-if="dispute?.deadline && dispute.canReport" class="pay-contestation">
+        <p class="pay-contestation__timer">
+          Temps restant : <strong>{{ countdownLabel }}</strong>
+        </p>
+        <button
+          type="button"
+          class="pay-contestation__btn"
+          @click="$emit('report-dispute')"
+        >
+          Signaler un problème
+        </button>
+      </div>
+      <div v-else-if="dispute?.disputeOpen" class="pay-meta-row">
+        <span class="pay-meta-label">Litige</span>
+        <span class="pay-meta-value pay-meta-value--warn">{{ dispute.statusLabel }}</span>
+      </div>
+      <div v-else-if="dispute?.deadline" class="pay-meta-row">
         <span class="pay-meta-label">Contestation</span>
         <span class="pay-meta-value">{{ dispute.statusLabel }}</span>
       </div>
@@ -41,6 +57,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+
 export interface PaymentSummary {
   status: string
   statusLabel: string
@@ -57,13 +75,16 @@ export interface StatusInfo {
   canValidateAsPro?: boolean
   canValidateAsClient?: boolean
   contestationEndsAt?: string | null
+  deadline?: string | null
   canTriggerFinalPayment?: boolean
   canReport?: boolean
+  disputeOpen?: boolean
+  available?: boolean
   canMark?: boolean
   history?: Array<{ action: string; by: string; at: string; note?: string | null }>
 }
 
-defineProps<{
+const props = defineProps<{
   payment: PaymentSummary
   serviceValidation?: StatusInfo | null
   dispute?: StatusInfo | null
@@ -71,6 +92,29 @@ defineProps<{
   variant?: 'compact' | 'full'
   showMeta?: boolean
 }>()
+
+defineEmits<{ 'report-dispute': [] }>()
+
+const nowMs = ref(Date.now())
+let tickTimer: ReturnType<typeof setInterval> | null = null
+
+const countdownLabel = computed(() => {
+  if (!props.dispute?.deadline || !props.dispute?.canReport) return '—'
+  const remaining = new Date(props.dispute.deadline).getTime() - nowMs.value
+  if (remaining <= 0) return 'Délai expiré'
+  const h = Math.floor(remaining / 3_600_000)
+  const m = Math.floor((remaining % 3_600_000) / 60_000)
+  const s = Math.floor((remaining % 60_000) / 1_000)
+  return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
+})
+
+onMounted(() => {
+  tickTimer = setInterval(() => { nowMs.value = Date.now() }, 1000)
+})
+
+onUnmounted(() => {
+  if (tickTimer) clearInterval(tickTimer)
+})
 
 function formatEur (value: number | null | undefined) {
   if (value == null) return '—'
@@ -107,6 +151,7 @@ function formatEur (value: number | null | undefined) {
 }
 
 .pay-badge.deposit_paid { background: #e8f4ec; color: #2d6a4f; }
+.pay-badge.dispute_blocked { background: #fdecea; color: #b42318; }
 .pay-badge.paid_in_full,
 .pay-badge.legacy_paid { background: #e8f4ec; color: #2d6a4f; }
 .pay-badge.cancelled { background: #fdecea; color: #b42318; }
@@ -152,4 +197,36 @@ function formatEur (value: number | null | undefined) {
 
 .pay-meta-label { color: #888; }
 .pay-meta-value { color: #4F3942; font-weight: 500; }
+.pay-meta-value--warn { color: #b42318; }
+
+.pay-contestation {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pay-contestation__timer {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #4F3942;
+}
+
+.pay-contestation__timer strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-contestation__btn {
+  align-self: start;
+  border: 1px solid #b42318;
+  background: #fff;
+  color: #b42318;
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pay-contestation__btn:hover {
+  background: #fdecea;
+}
 </style>

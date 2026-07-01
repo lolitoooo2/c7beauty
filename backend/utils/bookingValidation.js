@@ -102,13 +102,14 @@ function getWorkflowStatusLabel (status, booking = null) {
   return STATUS_LABELS[status] || status
 }
 
-function persistWorkflowTransition (booking, { workflowStatus, contestationEndsAt, finalPaymentAt, historyEntry }) {
+function persistWorkflowTransition (booking, { workflowStatus, contestationEndsAt, finalPaymentAt, disputeOpen, historyEntry }) {
   if (!booking.validation) {
     booking.validation = createInitialValidation(booking.remainingAmount ?? 0)
   }
   if (workflowStatus) booking.validation.workflowStatus = workflowStatus
   if (contestationEndsAt !== undefined) booking.validation.contestationEndsAt = contestationEndsAt
   if (finalPaymentAt !== undefined) booking.validation.finalPaymentAt = finalPaymentAt
+  if (disputeOpen !== undefined) booking.validation.disputeOpen = disputeOpen
   if (historyEntry) appendHistory(booking.validation, historyEntry)
 }
 
@@ -240,6 +241,53 @@ async function validateByClient ({ booking, clientId }) {
   return booking
 }
 
+async function openDispute ({ booking, clientId, reason = '' }) {
+  if (String(booking.clientId) !== String(clientId)) {
+    const err = new Error('Réservation introuvable.')
+    err.status = 404
+    throw err
+  }
+  if (booking.status !== 'confirmed') {
+    const err = new Error('Cette réservation ne peut pas faire l\'objet d\'un litige.')
+    err.status = 400
+    throw err
+  }
+  if (booking.validation?.disputeOpen) {
+    const err = new Error('Un litige est déjà ouvert sur cette réservation.')
+    err.status = 409
+    throw err
+  }
+
+  const stored = getStoredWorkflowStatus(booking)
+  if (stored !== WORKFLOW_STATUS.CONTESTATION) {
+    const err = new Error('La période de contestation n\'est pas ouverte.')
+    err.status = 409
+    throw err
+  }
+
+  const deadline = booking.validation?.contestationEndsAt
+  if (!deadline || new Date() >= new Date(deadline)) {
+    const err = new Error('Le délai de contestation est expiré.')
+    err.status = 409
+    throw err
+  }
+
+  const cleanReason = String(reason || '').trim().slice(0, 1000)
+
+  booking.validation.disputeOpen     = true
+  booking.validation.disputeReason   = cleanReason || null
+  booking.validation.disputeOpenedAt = new Date()
+  appendHistory(booking.validation, {
+    action   : 'dispute_opened',
+    by       : 'client',
+    byUserId : clientId,
+    note     : cleanReason || null
+  })
+
+  await booking.save()
+  return booking
+}
+
 function canTriggerFinalPayment (booking) {
   if (!needsValidationWorkflow(booking)) return false
   if (booking.validation?.disputeOpen) return false
@@ -285,6 +333,7 @@ function buildValidationView (booking) {
       && ended
       && effective === WORKFLOW_STATUS.AWAITING_CLIENT,
     contestationEndsAt     : booking.validation?.contestationEndsAt || null,
+    disputeOpen            : Boolean(booking.validation?.disputeOpen),
     canTriggerFinalPayment : canTriggerFinalPayment(booking),
     history                : (booking.validation?.history || []).map(h => ({
       action : h.action,
@@ -303,6 +352,7 @@ module.exports = {
   getEffectiveWorkflowStatus,
   validateByPro,
   validateByClient,
+  openDispute,
   canTriggerFinalPayment,
   buildValidationView,
   syncPersistedWorkflow

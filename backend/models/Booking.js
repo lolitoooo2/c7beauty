@@ -70,6 +70,8 @@ const bookingSchema = new mongoose.Schema(
       contestationEndsAt : { type: Date, default: null },
       finalPaymentAt     : { type: Date, default: null },
       disputeOpen        : { type: Boolean, default: false },
+      disputeReason      : { type: String, default: null },
+      disputeOpenedAt    : { type: Date, default: null },
       history : [{
         action   : { type: String, required: true },
         by       : { type: String, required: true },

@@ -18,5 +18,6 @@ router.get('/loyalty/preview',     booking.previewLoyalty)
 router.get('/bookings',              booking.listForClient)
 router.patch('/bookings/:id/cancel', booking.cancelByClient)
 router.patch('/bookings/:id/validate', booking.validateByClient)
+router.patch('/bookings/:id/dispute',  booking.openDisputeByClient)
 
 module.exports = router

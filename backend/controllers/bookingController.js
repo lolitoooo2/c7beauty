@@ -21,7 +21,8 @@ const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPayme
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
 const {
   validateByPro,
-  validateByClient
+  validateByClient,
+  openDispute
 } = require('../utils/bookingValidation')
 
 function parseSlotTimes (dateStr, startTime, duration) {
@@ -265,6 +266,33 @@ exports.validateByClient = async (req, res) => {
     })
   } catch (err) {
     console.error('[booking.validateByClient]', err)
+    res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
+  }
+}
+
+// ── PATCH /api/client/bookings/:id/dispute ────────────
+exports.openDisputeByClient = async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id      : req.params.id,
+      clientId : req.userId,
+      status   : 'confirmed'
+    })
+
+    if (!booking) return res.status(404).json({ message: 'Réservation introuvable.' })
+
+    await openDispute({
+      booking,
+      clientId : req.userId,
+      reason   : req.body?.reason
+    })
+
+    res.json({
+      message : 'Litige enregistré. Le paiement du solde est suspendu.',
+      booking : formatBooking(booking.toObject())
+    })
+  } catch (err) {
+    console.error('[booking.openDisputeByClient]', err)
     res.status(err.status || 500).json({ message: err.message || 'Erreur serveur.' })
   }
 }

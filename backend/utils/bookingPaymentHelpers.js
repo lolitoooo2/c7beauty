@@ -41,6 +41,17 @@ function buildPaymentSummary (booking) {
 
   const validation = buildValidationView(booking)
 
+  if (booking.validation?.disputeOpen) {
+    return {
+      status          : 'dispute_blocked',
+      statusLabel     : 'Paiement bloqué — litige en cours',
+      totalPrice,
+      depositAmount,
+      remainingAmount,
+      depositPercent  : booking.depositPercent ?? null
+    }
+  }
+
   if (validation.canTriggerFinalPayment) {
     return {
       status          : 'ready_for_final',
@@ -89,17 +100,34 @@ function buildServiceValidation (booking) {
 }
 
 function buildDisputeInfo (booking) {
-  const validation = buildValidationView(booking)
-
-  if (validation.workflowStatus === WORKFLOW_STATUS.CONTESTATION) {
+  if (booking.validation?.disputeOpen) {
     return {
       available   : true,
-      status      : 'contestation',
-      statusLabel : validation.statusLabel,
-      deadline    : validation.contestationEndsAt,
-      canReport   : false
+      status      : 'dispute_open',
+      statusLabel : 'Litige en cours — paiement bloqué',
+      deadline    : booking.validation.contestationEndsAt || null,
+      canReport   : false,
+      disputeOpen : true
     }
   }
+
+  const stored = booking.validation?.workflowStatus
+  if (stored === WORKFLOW_STATUS.CONTESTATION && booking.validation?.contestationEndsAt) {
+    const deadline = new Date(booking.validation.contestationEndsAt)
+    const active   = new Date() < deadline
+    return {
+      available   : true,
+      status      : active ? 'contestation' : 'contestation_ended',
+      statusLabel : active
+        ? 'Période de contestation (24h)'
+        : 'Délai de contestation expiré',
+      deadline    : booking.validation.contestationEndsAt,
+      canReport   : active,
+      disputeOpen : false
+    }
+  }
+
+  const validation = buildValidationView(booking)
 
   if (validation.workflowStatus === WORKFLOW_STATUS.READY_FOR_PAYMENT) {
     return {
