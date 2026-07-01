@@ -122,6 +122,12 @@
             <p v-if="nextBooking.collaborator" class="booking-card__who">
               avec {{ nextBooking.collaborator.firstName }} {{ nextBooking.collaborator.lastName }}
             </p>
+            <BookingPaymentSummary
+              v-if="nextBooking.payment"
+              :payment="nextBooking.payment"
+              variant="compact"
+              class="booking-card__pay"
+            />
           </div>
           <span class="booking-card__price">{{ nextBooking.price.toFixed(2) }} €</span>
         </div>
@@ -158,6 +164,12 @@
                 <h3>{{ b.pro?.salonName }}</h3>
                 <p class="booking-card__svc">{{ b.serviceName }} · {{ b.price.toFixed(2) }} €</p>
                 <p class="booking-card__when">{{ formatBookingDate(b.start) }}</p>
+                <BookingPaymentSummary
+                  v-if="b.payment"
+                  :payment="b.payment"
+                  variant="compact"
+                  class="booking-card__pay"
+                />
               </div>
               <button type="button" class="btn-outline danger" @click="cancelBooking(b._id)">Annuler</button>
             </article>
@@ -174,6 +186,12 @@
                 <p class="booking-card__svc">{{ b.serviceName }}</p>
                 <p class="booking-card__when">{{ formatBookingDate(b.start) }}</p>
                 <span class="booking-status" :class="b.status">{{ statusLabel(b.status) }}</span>
+                <BookingPaymentSummary
+                  v-if="b.payment"
+                  :payment="b.payment"
+                  variant="compact"
+                  class="booking-card__pay"
+                />
               </div>
             </article>
           </div>
@@ -319,6 +337,10 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import type { ClientUser } from '@/stores/auth'
+import BookingPaymentSummary, {
+  type PaymentSummary,
+  type StatusInfo
+} from '@/components/BookingPaymentSummary.vue'
 
 const authStore     = useAuthStore()
 const router        = useRouter()
@@ -333,6 +355,8 @@ interface BookingItem {
   status: string
   serviceName: string
   price: number
+  payment?: PaymentSummary
+  dispute?: StatusInfo
   pro?: { salonName: string; address?: string; city?: string; postalCode?: string }
   collaborator?: { firstName: string; lastName: string; photo?: string | null }
 }
@@ -935,6 +959,11 @@ body { margin: 0; }
   font-weight: 800;
   color: #4F3942;
   flex-shrink: 0;
+}
+
+.booking-card__pay {
+  margin-top: 0.65rem;
+  max-width: 320px;
 }
 
 .booking-status {

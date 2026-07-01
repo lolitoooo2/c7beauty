@@ -18,6 +18,7 @@ const {
   computeRemainingAmount,
   computeCommission
 } = require('../utils/platformSettings')
+const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
 
 function checkoutPayload (session) {
   return {
@@ -29,12 +30,7 @@ function checkoutPayload (session) {
 
 function formatBookingFromPayment (booking) {
   if (!booking) return null
-  const remainingAmount = booking.remainingAmount != null
-    ? booking.remainingAmount
-    : (booking.depositAmount != null && booking.price != null
-      ? computeRemainingAmount(booking.price, booking.depositAmount)
-      : null)
-  return {
+  const base = {
     _id            : booking._id,
     proId          : typeof booking.proId === 'object' ? booking.proId?._id : booking.proId,
     clientId       : typeof booking.clientId === 'object' ? booking.clientId?._id : booking.clientId,
@@ -46,10 +42,10 @@ function formatBookingFromPayment (booking) {
     serviceName    : booking.serviceName,
     duration       : booking.duration,
     price          : booking.price,
-    depositPercent  : booking.depositPercent ?? null,
-    depositAmount   : booking.depositAmount ?? null,
-    remainingAmount,
-    originalPrice   : booking.originalPrice,
+    depositPercent : booking.depositPercent ?? null,
+    depositAmount  : booking.depositAmount ?? null,
+    remainingAmount: resolveRemainingAmount(booking),
+    originalPrice  : booking.originalPrice,
     discountPercent: booking.discountPercent,
     cashbackEarned : booking.cashbackEarned,
     pro            : booking.proId && typeof booking.proId === 'object'
@@ -70,6 +66,7 @@ function formatBookingFromPayment (booking) {
         }
       : undefined
   }
+  return enrichBooking(base, booking)
 }
 
 async function tryFulfillFromStripeSession (session, payment) {

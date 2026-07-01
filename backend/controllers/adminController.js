@@ -3,6 +3,7 @@ const fs     = require('fs')
 const Client = require('../models/Client')
 const Pro    = require('../models/Pro')
 const Admin  = require('../models/Admin')
+const Payment = require('../models/Payment')
 const { geocodeAddress, hasValidLocation } = require('../utils/geocode')
 const { ensureOwnerCollaborator } = require('../utils/collaboratorHelpers')
 
@@ -301,6 +302,69 @@ exports.resendClientVerification = async (req, res) => {
     res.json({ message: 'Email de vérification renvoyé.' })
   } catch (err) {
     console.error('[admin.resendClientVerification]', err)
+    res.status(500).json({ message: 'Erreur serveur.' })
+  }
+}
+
+const PAYMENT_STATUS_LABELS = {
+  pending   : 'En attente',
+  succeeded : 'Réussi',
+  failed    : 'Échoué',
+  expired   : 'Expiré'
+}
+
+function formatAdminPayment (p) {
+  const client = p.clientId && typeof p.clientId === 'object' ? p.clientId : null
+  const pro    = p.proId && typeof p.proId === 'object' ? p.proId : null
+  const booking = p.bookingId && typeof p.bookingId === 'object' ? p.bookingId : null
+
+  return {
+    _id                : p._id,
+    status             : p.status,
+    statusLabel        : PAYMENT_STATUS_LABELS[p.status] || p.status,
+    amount             : p.amount,
+    totalPrice         : p.totalPrice,
+    remainingAmount    : p.remainingAmount,
+    depositPercent     : p.depositPercent,
+    commissionPercent  : p.commissionPercent,
+    platformCommission : p.platformCommission,
+    proShare           : p.proShare,
+    clientName         : client ? `${client.firstName} ${client.lastName}`.trim() : '—',
+    clientEmail        : client?.email || '—',
+    salonName          : pro?.salonName || '—',
+    serviceName        : booking?.serviceName || '—',
+    bookingStart       : booking?.start || null,
+    bookingStatus      : booking?.status || null,
+    createdAt          : p.createdAt
+  }
+}
+
+// ── GET /api/admin/payments ───────────────────────────
+exports.getPayments = async (req, res) => {
+  try {
+    const { page = 1, limit = 30, status = '' } = req.query
+    const filter = {}
+    if (status) filter.status = status
+
+    const total = await Payment.countDocuments(filter)
+    const payments = await paginate(
+      Payment.find(filter)
+        .sort('-createdAt')
+        .populate('clientId', 'firstName lastName email')
+        .populate('proId', 'salonName')
+        .populate('bookingId', 'serviceName start status'),
+      Number(page),
+      Number(limit)
+    )
+
+    res.json({
+      data  : payments.map(formatAdminPayment),
+      total,
+      page  : Number(page),
+      pages : Math.ceil(total / Number(limit))
+    })
+  } catch (err) {
+    console.error('[admin.getPayments]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
   }
 }

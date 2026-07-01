@@ -41,15 +41,15 @@
             <Calendar :size="16" />
             {{ formatWhen(booking.start) }}
           </p>
-          <p class="success-details__price">
+          <BookingPaymentSummary
+            v-if="booking.payment"
+            :payment="booking.payment"
+            :dispute="booking.dispute"
+            show-meta
+          />
+          <p v-else class="success-details__price">
             Total : {{ booking.price.toFixed(2) }} €
             <span v-if="loyalty?.halfPriceApplied" class="success-badge">-50 % fidélité</span>
-          </p>
-          <p v-if="booking.depositAmount != null" class="success-details__paid">
-            Acompte réglé : {{ booking.depositAmount.toFixed(2) }} €
-          </p>
-          <p v-if="booking.remainingAmount != null && booking.remainingAmount > 0" class="success-details__remaining">
-            Solde restant : {{ booking.remainingAmount.toFixed(2) }} € (après la prestation)
           </p>
           <p v-if="loyalty?.cashbackEarned" class="success-cashback">
             +{{ loyalty.cashbackEarned.toFixed(2) }} € ajoutés à votre cagnotte
@@ -78,14 +78,18 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Loader2, CheckCircle2, CircleAlert, Calendar } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import BookingPaymentSummary, {
+  type PaymentSummary,
+  type StatusInfo
+} from '@/components/BookingPaymentSummary.vue'
 
 interface BookingResult {
   _id: string
   start: string
   serviceName: string
   price: number
-  depositAmount?: number | null
-  remainingAmount?: number | null
+  payment?: PaymentSummary
+  dispute?: StatusInfo
   pro?: { salonName: string }
 }
 
@@ -233,24 +237,12 @@ onMounted(() => pollStatus())
 .success-details__service { margin: 0 0 0.75rem; color: #6b5a62; }
 
 .success-details__when,
-.success-details__price,
-.success-details__paid,
-.success-details__remaining {
+.success-details__price {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin: 0.35rem 0;
   font-size: 0.95rem;
-}
-
-.success-details__paid {
-  color: #2d8a5e;
-  font-weight: 600;
-}
-
-.success-details__remaining {
-  color: #6b5a62;
-  font-size: 0.88rem;
 }
 
 .success-badge {

@@ -338,6 +338,62 @@
         <Pagination :page="emails.page" :pages="emails.pages" @change="p => { emails.page = p; fetchEmailLogs() }" />
       </section>
 
+      <!-- ── PAIEMENTS ───────────────────────────────── -->
+      <section v-else-if="section === 'payments'" class="section-content">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <select v-model="payments.statusFilter" class="filter-select" @change="fetchPayments">
+              <option value="">Tous statuts</option>
+              <option value="succeeded">Réussis</option>
+              <option value="pending">En attente</option>
+              <option value="failed">Échoués</option>
+              <option value="expired">Expirés</option>
+            </select>
+          </div>
+          <span class="total-label">{{ payments.total }} paiement(s)</span>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Client</th>
+                <th>Salon</th>
+                <th>Prestation</th>
+                <th>Acompte</th>
+                <th>Solde</th>
+                <th>Commission</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="payments.loading"><td colspan="8" class="loading-row"><div class="spinner-sm"></div> Chargement…</td></tr>
+              <tr v-else-if="!payments.list.length"><td colspan="8" class="empty-row">Aucun paiement enregistré.</td></tr>
+              <tr v-for="p in payments.list" :key="p._id">
+                <td>{{ formatDate(p.createdAt) }}</td>
+                <td>
+                  <span class="cell-name">{{ p.clientName }}</span>
+                  <span class="cell-sub">{{ p.clientEmail }}</span>
+                </td>
+                <td>{{ p.salonName }}</td>
+                <td>
+                  <span class="cell-name">{{ p.serviceName }}</span>
+                  <span v-if="p.totalPrice != null" class="cell-sub">{{ p.totalPrice.toFixed(2) }} € total</span>
+                </td>
+                <td>{{ p.amount?.toFixed(2) }} €</td>
+                <td>{{ p.remainingAmount?.toFixed(2) ?? '0.00' }} €</td>
+                <td>
+                  <span class="cell-name">{{ p.platformCommission?.toFixed(2) }} €</span>
+                  <span class="cell-sub">{{ p.commissionPercent ?? '—' }} %</span>
+                </td>
+                <td><span class="pay-admin-badge" :class="p.status">{{ p.statusLabel }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <Pagination :page="payments.page" :pages="payments.pages" @change="p => { payments.page = p; fetchPayments() }" />
+      </section>
+
       <!-- ── PARAMÈTRES ──────────────────────────────── -->
       <section v-else-if="section === 'settings'" class="section-content">
         <div class="toolbar">
@@ -615,7 +671,7 @@ import { useRouter } from 'vue-router'
 import {
   LayoutDashboard, Users, Scissors, FileCheck, Search,
   LogOut, PanelLeftClose, PanelLeftOpen, Clock, CheckCircle,
-  UserPlus, Pencil, Trash2, FileText, Check, X, Plus, Loader2, Tag, Mail, Settings
+  UserPlus, Pencil, Trash2, FileText, Check, X, Plus, Loader2, Tag, Mail, Settings, CreditCard
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -626,7 +682,7 @@ const toast     = useToast()
 
 // ── Sidebar ──────────────────────────────────────────
 const sidebarClosed = ref(false)
-const section = ref<'dashboard' | 'kyc' | 'pros' | 'clients' | 'categories' | 'emails' | 'settings'>('dashboard')
+const section = ref<'dashboard' | 'kyc' | 'pros' | 'clients' | 'categories' | 'emails' | 'payments' | 'settings'>('dashboard')
 
 const navItems = [
   { key: 'dashboard',  label: 'Tableau de bord', icon: LayoutDashboard },
@@ -634,6 +690,7 @@ const navItems = [
   { key: 'pros',       label: 'Professionnels',  icon: Scissors },
   { key: 'clients',    label: 'Clients',         icon: Users },
   { key: 'emails',     label: 'Emails',          icon: Mail },
+  { key: 'payments',   label: 'Paiements',       icon: CreditCard },
   { key: 'categories', label: 'Catégories',      icon: Tag },
   { key: 'settings',   label: 'Paramètres',      icon: Settings }
 ] as const
@@ -754,6 +811,27 @@ async function fetchEmailLogs () {
     emails.total = d.total
     emails.pages = d.pages
   } finally { emails.loading = false }
+}
+
+const payments = reactive({
+  list: [] as any[],
+  total: 0,
+  page: 1,
+  pages: 1,
+  loading: false,
+  statusFilter: ''
+})
+
+async function fetchPayments () {
+  payments.loading = true
+  try {
+    const p = new URLSearchParams({ page: String(payments.page), limit: '30' })
+    if (payments.statusFilter) p.set('status', payments.statusFilter)
+    const d = await api(`/api/admin/payments?${p}`)
+    payments.list = d.data
+    payments.total = d.total
+    payments.pages = d.pages
+  } finally { payments.loading = false }
 }
 
 // ── KYC actions ──────────────────────────────────────
@@ -1071,6 +1149,7 @@ onMounted(() => {
 
 watch(section, (s) => {
   if (s === 'emails') fetchEmailLogs()
+  if (s === 'payments') fetchPayments()
   if (s === 'settings') fetchPlatformSettings()
 })
 
@@ -1623,6 +1702,22 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   min-width: 140px;
   justify-content: center;
 }
+
+.pay-admin-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: #ece6ea;
+  color: #4F3942;
+}
+
+.pay-admin-badge.succeeded { background: #e8f4ec; color: #2d6a4f; }
+.pay-admin-badge.pending { background: #fff4e5; color: #b45309; }
+.pay-admin-badge.failed,
+.pay-admin-badge.expired { background: #fdecea; color: #b42318; }
 
 @media (max-width: 768px) {
   .admin-sidebar { width: 64px; }

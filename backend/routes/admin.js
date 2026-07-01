@@ -34,6 +34,7 @@ router.patch('/clients/:id/verify-email', c.verifyClientEmail)
 router.post('/clients/:id/resend-verification', c.resendClientVerification)
 
 router.get('/emails',             c.getEmailLogs)
+router.get('/payments',           c.getPayments)
 
 // Documents KYC (accès sécurisé admin uniquement)
 router.get('/docs/:filename',     c.getDoc)

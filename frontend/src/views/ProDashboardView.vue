@@ -890,10 +890,19 @@
               <dd>{{ bookingDetailModal.duration }} min</dd>
             </div>
             <div v-if="bookingDetailModal.price != null">
-              <dt>Prix</dt>
+              <dt>Prix total</dt>
               <dd>{{ bookingDetailModal.price.toFixed(2) }} €</dd>
             </div>
           </dl>
+          <BookingPaymentSummary
+            v-if="bookingDetailModal.payment"
+            :payment="bookingDetailModal.payment"
+            :service-validation="bookingDetailModal.serviceValidation"
+            :dispute="bookingDetailModal.dispute"
+            :no-show="bookingDetailModal.noShow"
+            show-meta
+            class="booking-detail__pay"
+          />
         </div>
         <div class="svc-modal__footer">
           <button
@@ -1013,6 +1022,10 @@ import { useToast } from '@/composables/useToast'
 import type { ProUser } from '@/stores/auth'
 import AgendaCalendar from '@/components/AgendaCalendar.vue'
 import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor.vue'
+import BookingPaymentSummary, {
+  type PaymentSummary,
+  type StatusInfo
+} from '@/components/BookingPaymentSummary.vue'
 
 const authStore   = useAuthStore()
 const router      = useRouter()
@@ -1664,21 +1677,29 @@ interface AgendaBooking {
   serviceName: string
   duration?: number
   price?: number
+  payment?: PaymentSummary
+  serviceValidation?: StatusInfo
+  dispute?: StatusInfo
+  noShow?: StatusInfo
   client?: { firstName: string; lastName: string; phone?: string }
 }
 
 const bookingDetailModal = reactive({
-  open         : false,
-  bookingId    : '',
-  serviceName  : '',
-  clientName   : '',
-  clientPhone  : '',
-  timeLabel    : '',
-  endLabel     : '',
-  duration     : 0,
-  price        : null as number | null,
-  startIso     : '',
-  cancelLoading: false
+  open               : false,
+  bookingId          : '',
+  serviceName        : '',
+  clientName         : '',
+  clientPhone        : '',
+  timeLabel          : '',
+  endLabel           : '',
+  duration           : 0,
+  price              : null as number | null,
+  payment            : null as PaymentSummary | null,
+  serviceValidation  : null as StatusInfo | null,
+  dispute            : null as StatusInfo | null,
+  noShow             : null as StatusInfo | null,
+  startIso           : '',
+  cancelLoading      : false
 })
 
 const agendaBookingsGrouped = computed(() => {
@@ -1719,34 +1740,46 @@ function openBookingDetailFromEvent (payload: {
   endLabel?: string
   duration?: number
   price?: number
+  payment?: PaymentSummary | null
+  serviceValidation?: StatusInfo | null
+  dispute?: StatusInfo | null
+  noShow?: StatusInfo | null
   startIso?: string
 }) {
   Object.assign(bookingDetailModal, {
-    open         : true,
-    bookingId    : payload.bookingId || '',
-    serviceName  : payload.serviceName || 'Rendez-vous',
-    clientName   : payload.clientName || '',
-    clientPhone  : payload.clientPhone || '',
-    timeLabel    : payload.timeLabel || '',
-    endLabel     : payload.endLabel || '',
-    duration     : payload.duration || 0,
-    price        : payload.price ?? null,
-    startIso     : payload.startIso || '',
-    cancelLoading: false
+    open              : true,
+    bookingId         : payload.bookingId || '',
+    serviceName       : payload.serviceName || 'Rendez-vous',
+    clientName        : payload.clientName || '',
+    clientPhone       : payload.clientPhone || '',
+    timeLabel         : payload.timeLabel || '',
+    endLabel          : payload.endLabel || '',
+    duration          : payload.duration || 0,
+    price             : payload.price ?? null,
+    payment           : payload.payment ?? null,
+    serviceValidation : payload.serviceValidation ?? null,
+    dispute           : payload.dispute ?? null,
+    noShow            : payload.noShow ?? null,
+    startIso          : payload.startIso || '',
+    cancelLoading     : false
   })
 }
 
 function openBookingDetail (b: AgendaBooking) {
   openBookingDetailFromEvent({
-    bookingId   : b._id,
-    serviceName : b.serviceName,
-    clientName  : b.client ? `${b.client.firstName} ${b.client.lastName}`.trim() : '',
-    clientPhone : b.client?.phone || '',
-    timeLabel   : formatBookingTime(b.start),
-    endLabel    : formatBookingTime(b.end),
-    duration    : b.duration,
-    price       : b.price,
-    startIso    : b.start
+    bookingId         : b._id,
+    serviceName       : b.serviceName,
+    clientName        : b.client ? `${b.client.firstName} ${b.client.lastName}`.trim() : '',
+    clientPhone       : b.client?.phone || '',
+    timeLabel         : formatBookingTime(b.start),
+    endLabel          : formatBookingTime(b.end),
+    duration          : b.duration,
+    price             : b.price,
+    payment           : b.payment ?? null,
+    serviceValidation : b.serviceValidation ?? null,
+    dispute           : b.dispute ?? null,
+    noShow            : b.noShow ?? null,
+    startIso          : b.start
   })
 }
 
@@ -2001,7 +2034,9 @@ function onAgendaEventClick (payload: {
   price?: number
 }) {
   if (payload.type === 'booking' && payload.bookingId) {
-    openBookingDetailFromEvent(payload)
+    const full = agendaBookings.value.find(b => b._id === payload.bookingId)
+    if (full) openBookingDetail(full)
+    else openBookingDetailFromEvent(payload)
     return
   }
   if (payload.type === 'service_constraint' && payload.constraintId) {
@@ -2425,6 +2460,10 @@ body { margin: 0; }
 
 .booking-detail__list a:hover {
   text-decoration: underline;
+}
+
+.booking-detail__pay {
+  margin-top: 1rem;
 }
 
 .page-title {

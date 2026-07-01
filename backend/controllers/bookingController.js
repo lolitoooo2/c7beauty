@@ -16,7 +16,8 @@ const {
   getLoyaltyPreview
 } = require('../utils/loyaltyHelpers')
 const { isStripeEnabled } = require('../utils/stripeHelpers')
-const { getPlatformSettings, computeRemainingAmount } = require('../utils/platformSettings')
+const { getPlatformSettings } = require('../utils/platformSettings')
+const { resolveRemainingAmount, enrichBooking } = require('../utils/bookingPaymentHelpers')
 const { fulfillHoldToBooking } = require('../utils/bookingFulfillment')
 
 function parseSlotTimes (dateStr, startTime, duration) {
@@ -41,20 +42,12 @@ async function validateSlotStillInGrid ({
   return result.slots.some(s => s.startTime === startTime)
 }
 
-function resolveRemainingAmount (b) {
-  if (b.remainingAmount != null) return b.remainingAmount
-  if (b.depositAmount != null && b.price != null) {
-    return computeRemainingAmount(b.price, b.depositAmount)
-  }
-  return null
-}
-
 function formatBooking (b) {
   const client = b.clientId && typeof b.clientId === 'object'
     ? { _id: b.clientId._id, firstName: b.clientId.firstName, lastName: b.clientId.lastName, phone: b.clientId.phone, email: b.clientId.email }
     : undefined
 
-  return {
+  const base = {
     _id            : b._id,
     proId          : b.proId,
     clientId       : typeof b.clientId === 'object' ? b.clientId?._id : b.clientId,
@@ -66,10 +59,10 @@ function formatBooking (b) {
     serviceName    : b.serviceName,
     duration       : b.duration,
     price          : b.price,
-    depositPercent  : b.depositPercent ?? null,
-    depositAmount   : b.depositAmount ?? null,
-    remainingAmount : resolveRemainingAmount(b),
-    cancelledAt     : b.cancelledAt,
+    depositPercent : b.depositPercent ?? null,
+    depositAmount  : b.depositAmount ?? null,
+    remainingAmount: resolveRemainingAmount(b),
+    cancelledAt    : b.cancelledAt,
     createdAt      : b.createdAt,
     client,
     pro            : b.proId && typeof b.proId === 'object'
@@ -79,6 +72,8 @@ function formatBooking (b) {
       ? { _id: b.collaboratorId._id, firstName: b.collaboratorId.firstName, lastName: b.collaboratorId.lastName, photo: b.collaboratorId.photo }
       : undefined
   }
+
+  return enrichBooking(base, b)
 }
 
 async function cancelBookingById ({ booking, cancelledBy }) {
