@@ -84,7 +84,7 @@
             </div>
           </div>
 
-          <div class="summary-card">
+          <div v-if="referralEnabled" class="summary-card">
             <div class="summary-card__icon"><Users :size="22" /></div>
             <div class="summary-card__body">
               <span class="summary-card__value referral">{{ client?.myReferralCode ?? '—' }}</span>
@@ -258,16 +258,18 @@
           </div>
         </div>
 
-        <h2 class="section-title">Parrainage</h2>
-        <div class="referral-card">
-          <div class="referral-card__code">{{ client?.myReferralCode ?? '—' }}</div>
-          <p class="referral-card__text">
-            Partagez ce code. Vous gagnez <strong>5 €</strong> et votre filleul aussi !
-          </p>
-          <button class="btn-primary" @click="copyReferral">
-            <Copy :size="15" /> Copier le code
-          </button>
-        </div>
+        <template v-if="referralEnabled">
+          <h2 class="section-title">Parrainage</h2>
+          <div class="referral-card">
+            <div class="referral-card__code">{{ client?.myReferralCode ?? '—' }}</div>
+            <p class="referral-card__text">
+              Partagez ce code. Vous gagnez <strong>5 €</strong> et votre filleul aussi !
+            </p>
+            <button class="btn-primary" @click="copyReferral">
+              <Copy :size="15" /> Copier le code
+            </button>
+          </div>
+        </template>
       </section>
 
       <!-- ── Profil ── -->
@@ -426,6 +428,7 @@ interface BookingItem {
 
 const validatingBookingId = ref<string | null>(null)
 const disputingBookingId  = ref<string | null>(null)
+const referralEnabled     = ref(false)
 const disputeModal = reactive({
   open      : false,
   bookingId : '',
@@ -612,6 +615,17 @@ function statusLabel (status: string) {
   return 'Passé'
 }
 
+async function fetchReferralSetting () {
+  try {
+    const res = await fetch('/api/settings')
+    if (!res.ok) return
+    const data = await res.json()
+    referralEnabled.value = Boolean(data.referralCashbackEnabled)
+  } catch {
+    referralEnabled.value = false
+  }
+}
+
 async function fetchBookings () {
   bookingsLoading.value = true
   try {
@@ -697,7 +711,10 @@ async function submitDispute () {
   }
 }
 
-onMounted(fetchBookings)
+onMounted(() => {
+  fetchReferralSetting()
+  fetchBookings()
+})
 watch(activeSection, (s) => { if (s === 'history' || s === 'home') fetchBookings() })
 </script>
 

@@ -21,6 +21,10 @@ const platformSettingsSchema = new mongoose.Schema(
       default : DEFAULT_COMMISSION_PERCENT,
       min     : 0,
       max     : 100
+    },
+    referralCashbackEnabled : {
+      type    : Boolean,
+      default : false
     }
   },
   {

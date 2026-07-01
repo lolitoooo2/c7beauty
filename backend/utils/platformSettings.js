@@ -12,15 +12,21 @@ async function getPlatformSettings () {
   let settings = await PlatformSettings.findOne({ key: 'global' })
   if (!settings) {
     settings = await PlatformSettings.create({
-      key               : 'global',
-      depositPercent    : DEFAULT_DEPOSIT_PERCENT,
-      commissionPercent : DEFAULT_COMMISSION_PERCENT
+      key                     : 'global',
+      depositPercent          : DEFAULT_DEPOSIT_PERCENT,
+      commissionPercent       : DEFAULT_COMMISSION_PERCENT,
+      referralCashbackEnabled : false
     })
     return settings
   }
 
   if (settings.commissionPercent == null) {
     settings.commissionPercent = DEFAULT_COMMISSION_PERCENT
+    await settings.save()
+  }
+
+  if (settings.referralCashbackEnabled == null) {
+    settings.referralCashbackEnabled = false
     await settings.save()
   }
 

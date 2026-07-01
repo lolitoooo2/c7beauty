@@ -4,7 +4,10 @@ const Pro    = require('../models/Pro')
 const Admin  = require('../models/Admin')
 const Collaborator = require('../models/Collaborator')
 const { geocodeAddress } = require('../utils/geocode')
-const { CASHBACK_MAX_EUR } = require('../utils/loyaltyHelpers')
+const {
+  generateReferralCode,
+  applyReferralBonus
+} = require('../utils/referralHelpers')
 const {
   assignVerificationToken,
   sendClientVerificationEmail,
@@ -22,10 +25,6 @@ function signToken (id, role) {
   return jwt.sign({ id, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES })
 }
 
-function generateReferralCode () {
-  return 'C7-' + Math.random().toString(36).substring(2, 8).toUpperCase()
-}
-
 /**
  * Vérifie qu'un email n'existe ni en clients ni en pros.
  * Un même email ne peut pas être utilisé sur les deux espaces.
@@ -38,22 +37,6 @@ async function emailAlreadyExists (email) {
     Collaborator.findOne({ email: lEmail, isOwner: false })
   ])
   return !!(c || p || col)
-}
-
-async function applyReferralBonus (client, referralCode) {
-  if (!referralCode) return
-
-  const sponsor = await Client.findOne({ myReferralCode: referralCode.trim().toUpperCase() })
-  if (!sponsor) return
-
-  const addBonus = (current = 0) => Math.min(CASHBACK_MAX_EUR, current + 5)
-
-  sponsor.wallet.cashback = addBonus(sponsor.wallet.cashback)
-  await sponsor.save()
-
-  client.referralUsed = referralCode.trim().toUpperCase()
-  client.wallet.cashback = addBonus(client.wallet.cashback)
-  await client.save()
 }
 
 // ── POST /api/auth/register/client ─────────────────────────────

@@ -451,6 +451,20 @@
             </p>
           </div>
 
+          <div class="settings-field settings-field--toggle">
+            <label class="settings-toggle">
+              <input
+                id="referralCashbackEnabled"
+                v-model="platformSettings.referralCashbackEnabled"
+                type="checkbox"
+              />
+              <span>Cashback parrainage (+5 € parrain / filleul)</span>
+            </label>
+            <p class="settings-hint">
+              Désactivé par défaut. Tant que cette option est off, le parrainage n'est ni affiché ni exécuté côté client.
+            </p>
+          </div>
+
           <p v-if="platformSettings.error" class="settings-error">{{ platformSettings.error }}</p>
 
           <div class="settings-actions">
@@ -1096,6 +1110,7 @@ async function deleteSubcat (catId: string, subId: string) {
 const platformSettings = reactive({
   depositPercent: 20,
   commissionPercent: 10,
+  referralCashbackEnabled: false,
   loading: false,
   saving: false,
   error: ''
@@ -1106,8 +1121,9 @@ async function fetchPlatformSettings () {
   platformSettings.error = ''
   try {
     const d = await api('/api/admin/settings')
-    platformSettings.depositPercent    = d.data.depositPercent
-    platformSettings.commissionPercent = d.data.commissionPercent
+    platformSettings.depositPercent          = d.data.depositPercent
+    platformSettings.commissionPercent       = d.data.commissionPercent
+    platformSettings.referralCashbackEnabled = Boolean(d.data.referralCashbackEnabled)
   } catch (err: any) {
     platformSettings.error = err.message || 'Impossible de charger les paramètres.'
   } finally {
@@ -1135,11 +1151,13 @@ async function savePlatformSettings () {
       method: 'PUT',
       body: JSON.stringify({
         depositPercent: deposit,
-        commissionPercent: commission
+        commissionPercent: commission,
+        referralCashbackEnabled: platformSettings.referralCashbackEnabled
       })
     })
-    platformSettings.depositPercent    = d.data.depositPercent
-    platformSettings.commissionPercent = d.data.commissionPercent
+    platformSettings.depositPercent          = d.data.depositPercent
+    platformSettings.commissionPercent       = d.data.commissionPercent
+    platformSettings.referralCashbackEnabled = Boolean(d.data.referralCashbackEnabled)
     toast.success('Paramètres enregistrés.')
   } catch (err: any) {
     platformSettings.error = err.message
@@ -1688,6 +1706,26 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   font-size: 0.78rem;
   color: #8A7A82;
   line-height: 1.45;
+}
+
+.settings-field--toggle {
+  padding-top: 0.5rem;
+  border-top: 1px solid #F0EBE8;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #2C1810;
+  cursor: pointer;
+}
+
+.settings-toggle input {
+  width: 1rem;
+  height: 1rem;
 }
 
 .settings-error {

@@ -148,7 +148,7 @@
           />
         </div>
 
-        <div class="form-field">
+        <div v-if="referralEnabled" class="form-field">
           <label for="referral">Code parrainage <span class="optional">(optionnel)</span></label>
           <input
             id="referral"
@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import AuthLayout from '@/components/AuthLayout.vue'
@@ -231,6 +231,7 @@ const showPass    = ref(false)
 const showConfirm = ref(false)
 const loading     = ref(false)
 const apiError    = ref('')
+const referralEnabled = ref(false)
 
 const authStore = useAuthStore()
 const router    = useRouter()
@@ -289,6 +290,19 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+async function fetchReferralSetting () {
+  try {
+    const res = await fetch('/api/settings')
+    if (!res.ok) return
+    const data = await res.json()
+    referralEnabled.value = Boolean(data.referralCashbackEnabled)
+  } catch {
+    referralEnabled.value = false
+  }
+}
+
+onMounted(fetchReferralSetting)
 </script>
 
 <style scoped>

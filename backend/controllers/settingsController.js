@@ -6,8 +6,9 @@ const {
 
 function formatSettings (settings) {
   return {
-    depositPercent    : settings.depositPercent,
-    commissionPercent : settings.commissionPercent
+    depositPercent            : settings.depositPercent,
+    commissionPercent         : settings.commissionPercent,
+    referralCashbackEnabled   : Boolean(settings.referralCashbackEnabled)
   }
 }
 
@@ -15,7 +16,10 @@ function formatSettings (settings) {
 exports.getPublicSettings = async (req, res) => {
   try {
     const settings = await getPlatformSettings()
-    res.json({ depositPercent: settings.depositPercent })
+    res.json({
+      depositPercent          : settings.depositPercent,
+      referralCashbackEnabled : Boolean(settings.referralCashbackEnabled)
+    })
   } catch (err) {
     console.error('[settings.getPublicSettings]', err)
     res.status(500).json({ message: 'Erreur serveur.' })
@@ -36,9 +40,13 @@ exports.getAdminSettings = async (req, res) => {
 // ── PUT /api/admin/settings ───────────────────────────
 exports.updateAdminSettings = async (req, res) => {
   try {
-    const { depositPercent, commissionPercent } = req.body
+    const { depositPercent, commissionPercent, referralCashbackEnabled } = req.body
 
-    if (depositPercent === undefined && commissionPercent === undefined) {
+    if (
+      depositPercent === undefined
+      && commissionPercent === undefined
+      && referralCashbackEnabled === undefined
+    ) {
       return res.status(400).json({ message: 'Au moins un paramètre requis.' })
     }
 
@@ -54,6 +62,10 @@ exports.updateAdminSettings = async (req, res) => {
       const validation = validateCommissionPercent(commissionPercent)
       if (!validation.ok) return res.status(400).json({ message: validation.message })
       settings.commissionPercent = validation.value
+    }
+
+    if (referralCashbackEnabled !== undefined) {
+      settings.referralCashbackEnabled = Boolean(referralCashbackEnabled)
     }
 
     await settings.save()
